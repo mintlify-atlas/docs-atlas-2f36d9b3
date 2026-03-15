@@ -1,0 +1,202 @@
+---
+title: "TL resources"
+description: "Upload, list, and delete PDF study resources for your clan's coders."
+---
+
+All routes in this group require an active session with `role = tl`. Resources are scoped to the TL's clan and are immediately visible to all active coders in that clan after upload.
+
+---
+
+## Upload a resource
+
+**POST** `/api/tl/resource/upload`
+
+Uploads a PDF file to Supabase Storage and creates a resource record in the database. After a successful upload, all active coders in the TL's clan receive a real-time notification.
+
+The request must be sent as `multipart/form-data`.
+
+<Warning>
+  Only PDF files are accepted. Any other MIME type will be rejected with a `400` error. The maximum file size is **20 MB**. Files exceeding this limit are rejected before upload.
+</Warning>
+
+### Request body (multipart/form-data)
+
+<ParamField body="file" type="file" required>
+  The PDF file to upload. Must have MIME type `application/pdf` and must not exceed 20 MB.
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  A human-readable title for the resource. Displayed to coders in the resource list.
+</ParamField>
+
+<ParamField body="moduleId" type="number">
+  Optional. The ID of the module this resource is associated with. Used to filter resources by module. Defaults to `0` (no specific module) if omitted.
+</ParamField>
+
+### Example request
+
+```bash
+curl --request POST \
+  --url http://localhost:3000/api/tl/resource/upload \
+  --cookie 'riwi.sid=YOUR_SESSION' \
+  --form 'file=@/path/to/postgres-indexes.pdf' \
+  --form 'title=PostgreSQL indexing guide' \
+  --form 'moduleId=4'
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the file was uploaded and the record created.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation: `"PDF subido correctamente."`
+</ResponseField>
+
+<ResponseField name="resourceId" type="number | null">
+  The ID of the newly created resource record. `null` if the database insert failed after a successful storage upload (non-blocking error).
+</ResponseField>
+
+<ResponseField name="storagePath" type="string">
+  The full path of the file within the `activity-resources` Supabase Storage bucket. Format: `{clan}/module-{moduleId}/{timestamp}_{filename}`.
+</ResponseField>
+
+### 200 — upload successful
+
+```json
+{
+  "success": true,
+  "message": "PDF subido correctamente.",
+  "resourceId": 8,
+  "storagePath": "Turing/module-4/1710000000000_postgres-indexes.pdf"
+}
+```
+
+### 400 — no file or invalid type
+
+```json
+{
+  "error": "Solo se aceptan archivos PDF."
+}
+```
+
+### 400 — file too large
+
+```json
+{
+  "error": "El archivo supera los 20 MB."
+}
+```
+
+### 400 — missing title
+
+```json
+{
+  "error": "El campo title es requerido."
+}
+```
+
+---
+
+## List resources
+
+**GET** `/api/tl/resource/list`
+
+Returns all active resources belonging to the TL's clan, optionally filtered by module. Results are ordered by upload date, newest first.
+
+### Query parameters
+
+<ParamField query="moduleId" type="number">
+  Filter results to resources associated with a specific module ID.
+</ParamField>
+
+### Responses
+
+<ResponseField name="resources" type="object[]">
+  List of active resources in the TL's clan.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Resource ID.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Resource title.
+    </ResponseField>
+    <ResponseField name="file_name" type="string">
+      Original filename of the uploaded PDF.
+    </ResponseField>
+    <ResponseField name="preview_text" type="string | null">
+      Extracted text preview from the PDF content.
+    </ResponseField>
+    <ResponseField name="uploaded_at" type="string">
+      ISO 8601 upload timestamp.
+    </ResponseField>
+    <ResponseField name="module_id" type="number | null">
+      Associated module ID.
+    </ResponseField>
+    <ResponseField name="clan" type="string">
+      Clan identifier this resource belongs to.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "resources": [
+    {
+      "id": 8,
+      "title": "PostgreSQL indexing guide",
+      "file_name": "postgres-indexes.pdf",
+      "preview_text": "An index allows the database to find rows without scanning the full table...",
+      "uploaded_at": "2026-03-10T14:00:00.000Z",
+      "module_id": 4,
+      "clan": "Turing"
+    }
+  ]
+}
+```
+
+---
+
+## Delete a resource
+
+**DELETE** `/api/tl/resource/:resourceId`
+
+Soft-deletes a resource by setting `is_active = false` in the database, then removes the file from Supabase Storage. The TL must be the original uploader and the resource must belong to their clan.
+
+<Warning>
+  Deletion removes the file from Supabase Storage. This action cannot be undone. Coders will no longer be able to access or download the resource.
+</Warning>
+
+### Path parameters
+
+<ParamField path="resourceId" type="number" required>
+  The ID of the resource to delete.
+</ParamField>
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the resource was successfully deleted.
+</ResponseField>
+
+### 200 — deleted
+
+```json
+{
+  "success": true
+}
+```
+
+### 404 — not found or unauthorized
+
+Returned when the resource does not exist, was not uploaded by the authenticated TL, or does not belong to their clan.
+
+```json
+{
+  "error": "Recurso no encontrado o no autorizado."
+}
+```

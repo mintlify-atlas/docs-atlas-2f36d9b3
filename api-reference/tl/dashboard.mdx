@@ -1,0 +1,316 @@
+---
+title: "TL dashboard"
+description: "Access cohort overview, score rankings, and individual coder score histories as a Team Leader."
+---
+
+All routes in this group require an active session with `role = tl`. TL routes do not have an onboarding gate.
+
+See [Authentication](/api-reference/authentication) for session setup details.
+
+---
+
+## Get dashboard data
+
+**GET** `/api/tl/dashboard`
+
+Returns a complete overview of the TL's clan: all coders with their progress, soft skill scores, risk flags, and Kairo scores, plus aggregated clan statistics and soft skills averages.
+
+### Responses
+
+<ResponseField name="tl" type="object">
+  The authenticated TL's profile.
+
+  <Expandable title="properties">
+    <ResponseField name="fullName" type="string">
+      The TL's display name.
+    </ResponseField>
+    <ResponseField name="clanId" type="string">
+      The TL's clan identifier (e.g. `"Turing"`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="coders" type="object[]">
+  All coders in the TL's clan, ordered alphabetically by name.
+
+  <Expandable title="coder properties">
+    <ResponseField name="id" type="number">
+      Coder's user ID.
+    </ResponseField>
+    <ResponseField name="full_name" type="string">
+      Coder's display name.
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Coder's email address.
+    </ResponseField>
+    <ResponseField name="first_login" type="boolean">
+      `true` if the coder has not yet completed onboarding.
+    </ResponseField>
+    <ResponseField name="clan_id" type="string">
+      Clan identifier.
+    </ResponseField>
+    <ResponseField name="kairo_score" type="number">
+      Coder's current Kairo score.
+    </ResponseField>
+    <ResponseField name="average_score" type="number | null">
+      Coder's average Moodle score. `null` if no progress data exists.
+    </ResponseField>
+    <ResponseField name="current_week" type="number | null">
+      Current week within the module.
+    </ResponseField>
+    <ResponseField name="autonomy" type="number | null">
+      Autonomy soft skill score (1–5). `null` if assessment not completed.
+    </ResponseField>
+    <ResponseField name="time_management" type="number | null">
+      Time management score (1–5).
+    </ResponseField>
+    <ResponseField name="problem_solving" type="number | null">
+      Problem solving score (1–5).
+    </ResponseField>
+    <ResponseField name="communication" type="number | null">
+      Communication score (1–5).
+    </ResponseField>
+    <ResponseField name="teamwork" type="number | null">
+      Teamwork score (1–5).
+    </ResponseField>
+    <ResponseField name="learning_style" type="string | null">
+      Learning style: `"visual"`, `"auditory"`, `"kinesthetic"`, or `"mixed"`. `null` if assessment not completed.
+    </ResponseField>
+    <ResponseField name="risk_level" type="string | null">
+      The coder's current unresolved risk flag level: `"low"`, `"medium"`, or `"high"`. `null` if no active risk flag.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="overview" type="object">
+  Aggregated clan statistics.
+
+  <Expandable title="properties">
+    <ResponseField name="totalCoders" type="number">
+      Total number of coders in the clan.
+    </ResponseField>
+    <ResponseField name="completedOnboarding" type="number">
+      Number of coders who have completed onboarding.
+    </ResponseField>
+    <ResponseField name="pendingOnboarding" type="number">
+      Number of coders who have not yet completed onboarding.
+    </ResponseField>
+    <ResponseField name="highRiskCoders" type="number">
+      Number of coders with an active `"high"` or `"critical"` risk flag.
+    </ResponseField>
+    <ResponseField name="clanAvgScore" type="number">
+      Average Kairo score across all coders in the clan, rounded to the nearest integer.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="softSkillsAverage" type="object">
+  Clan-wide average for each soft skill, calculated only over coders who have completed the assessment.
+
+  <Expandable title="properties">
+    <ResponseField name="autonomy" type="number">
+      Clan average autonomy score, to one decimal place.
+    </ResponseField>
+    <ResponseField name="time_management" type="number">
+      Clan average time management score.
+    </ResponseField>
+    <ResponseField name="problem_solving" type="number">
+      Clan average problem solving score.
+    </ResponseField>
+    <ResponseField name="communication" type="number">
+      Clan average communication score.
+    </ResponseField>
+    <ResponseField name="teamwork" type="number">
+      Clan average teamwork score.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "tl": {
+    "fullName": "Maria TL",
+    "clanId": "Turing"
+  },
+  "coders": [
+    {
+      "id": 42,
+      "full_name": "Alex Coder",
+      "email": "alex@riwi.io",
+      "first_login": false,
+      "clan_id": "Turing",
+      "kairo_score": 78,
+      "average_score": 72.5,
+      "current_week": 3,
+      "autonomy": 2,
+      "time_management": 3,
+      "problem_solving": 3,
+      "communication": 4,
+      "teamwork": 5,
+      "learning_style": "visual",
+      "risk_level": "medium"
+    }
+  ],
+  "overview": {
+    "totalCoders": 10,
+    "completedOnboarding": 9,
+    "pendingOnboarding": 1,
+    "highRiskCoders": 2,
+    "clanAvgScore": 65
+  },
+  "softSkillsAverage": {
+    "autonomy": 2.8,
+    "time_management": 3.2,
+    "problem_solving": 3.1,
+    "communication": 3.7,
+    "teamwork": 4.0
+  }
+}
+```
+
+---
+
+## Get score ranking
+
+**GET** `/api/tl/ranking`
+
+Returns a Kairo score leaderboard for the TL's clan, plus the top 10 coders globally across all clans.
+
+### Responses
+
+<ResponseField name="clan" type="string">
+  The TL's clan identifier.
+</ResponseField>
+
+<ResponseField name="clanRanking" type="object[]">
+  All active coders in the clan ranked by Kairo score.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Coder user ID.
+    </ResponseField>
+    <ResponseField name="full_name" type="string">
+      Coder display name.
+    </ResponseField>
+    <ResponseField name="kairo_score" type="number">
+      Kairo score.
+    </ResponseField>
+    <ResponseField name="clan" type="string">
+      Clan identifier.
+    </ResponseField>
+    <ResponseField name="rank" type="number">
+      Rank position within the clan (1 = highest score).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="globalRanking" type="object[]">
+  Top 10 coders across all clans ranked by Kairo score.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Coder user ID.
+    </ResponseField>
+    <ResponseField name="full_name" type="string">
+      Coder display name.
+    </ResponseField>
+    <ResponseField name="kairo_score" type="number">
+      Kairo score.
+    </ResponseField>
+    <ResponseField name="clan" type="string">
+      The coder's clan.
+    </ResponseField>
+    <ResponseField name="rank" type="number">
+      Global rank position.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "clan": "Turing",
+  "clanRanking": [
+    { "id": 42, "full_name": "Alex Coder", "kairo_score": 95, "clan": "Turing", "rank": 1 },
+    { "id": 55, "full_name": "Sam Dev", "kairo_score": 80, "clan": "Turing", "rank": 2 }
+  ],
+  "globalRanking": [
+    { "id": 42, "full_name": "Alex Coder", "kairo_score": 95, "clan": "Turing", "rank": 1 },
+    { "id": 71, "full_name": "Jordan B", "kairo_score": 92, "clan": "Tesla", "rank": 2 }
+  ]
+}
+```
+
+---
+
+## Get coder score history
+
+**GET** `/api/tl/coder/:id/score`
+
+Returns the Kairo score event history for a specific coder, showing how points were earned or lost over time. Returns the 20 most recent events.
+
+### Path parameters
+
+<ParamField path="id" type="number" required>
+  The user ID of the coder.
+</ParamField>
+
+### Responses
+
+<ResponseField name="coderId" type="number">
+  The requested coder's user ID.
+</ResponseField>
+
+<ResponseField name="currentScore" type="number">
+  The coder's current Kairo score.
+</ResponseField>
+
+<ResponseField name="history" type="object[]">
+  Score events, newest first. At most 20 are returned.
+
+  <Expandable title="properties">
+    <ResponseField name="label" type="string">
+      Human-readable description of the event. Possible values:
+      - `"Día completado"`
+      - `"Ejercicio enviado"`
+      - `"TL aprobó solución"`
+      - `"Plan completado (bonus)"`
+      - `"Días sin actividad"`
+    </ResponseField>
+    <ResponseField name="points" type="number">
+      Points awarded (positive) or deducted (negative) for this event.
+    </ResponseField>
+    <ResponseField name="createdAt" type="string">
+      ISO 8601 timestamp of the event.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "coderId": 42,
+  "currentScore": 78,
+  "history": [
+    {
+      "label": "Día completado",
+      "points": 5,
+      "createdAt": "2026-03-15T08:45:00.000Z"
+    },
+    {
+      "label": "Ejercicio enviado",
+      "points": 10,
+      "createdAt": "2026-03-14T17:30:00.000Z"
+    },
+    {
+      "label": "Días sin actividad",
+      "points": -5,
+      "createdAt": "2026-03-13T00:00:00.000Z"
+    }
+  ]
+}
+```

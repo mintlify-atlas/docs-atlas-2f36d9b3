@@ -1,0 +1,84 @@
+---
+title: "AI tutor"
+description: "On-demand conversational AI assistant powered by Groq's LLM for real-time help with exercises and concepts."
+---
+
+The AI tutor is a chat interface built into the Coder dashboard that lets students ask questions about exercises, request explanations of programming concepts, and get unstuck in real time. It is powered by Groq's `llama-3.3-70b-versatile` model (or `Qwen2.5-7B-Instruct` depending on the `MODEL_NAME` environment variable).
+
+## What the AI tutor does
+
+The tutor is a focused, context-aware assistant scoped to the Riwi bootcamp environment. Its system prompt instructs it to:
+
+- Give a concise direct answer first, then explain if needed
+- Use simple language and stay within 3 paragraphs
+- Respond in a motivating, practical way suited to a bootcamp pace
+
+The tutor does not retain conversation history between sessions — each request is independent.
+
+## Accessing the AI tutor
+
+Coders access the AI tutor through `frontend/src/views/coder/IAtrainer.html`. This view contains the chat widget that sends messages to the backend and renders streamed responses.
+
+## Chat API
+
+The frontend sends messages to the Python AI microservice directly (or via a Node.js proxy) at:
+
+```
+POST /chat/ask
+```
+
+### Request
+
+```json
+{
+  "message": "How do I write a LEFT JOIN in SQL?",
+  "coder_id": 42
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `message` | `string` | Yes | The Coder's question. Cannot be empty or whitespace-only. |
+| `coder_id` | `int` | No | Coder's user ID. Used for optional logging and context. |
+
+### Response
+
+```json
+{
+  "reply": "A LEFT JOIN returns all rows from the left table and matching rows from the right table. If there's no match, the right side returns NULL.\n\nExample:\n```sql\nSELECT u.full_name, mp.average_score\nFROM users u\nLEFT JOIN moodle_progress mp ON u.id = mp.coder_id;\n```\n\nThis returns every user even if they have no Moodle progress record yet."
+}
+```
+
+If the AI service is temporarily unavailable, the endpoint returns HTTP 500 with `{ "detail": "AI tutor temporarily unavailable" }`.
+
+## AI-generated exercises
+
+Beyond answering questions, the AI also generates personalized coding exercises tied to the Coder's active plan. The flow involves two steps:
+
+1. **Node.js gateway** receives `POST /api/coder/exercise/generate` and proxies it to the Python service.
+2. **Python service** handles `POST /generate-exercise`, checks a cache first (exercises are keyed by `plan_id` + `day_number`), then calls Groq if no cached version exists.
+
+Generated exercises include a `title`, `description`, `language`, `difficulty`, `starter_code`, `solution`, `expected_output`, and a list of `hints`. The language is either specified in the request or auto-detected from the module name.
+
+Exercises are cached in the `exercises` table using a `UNIQUE(plan_id, day_number)` constraint — the same exercise is always returned for the same plan day, so repeated opens do not trigger a new LLM call.
+
+## Exercise submission
+
+Once a Coder writes their solution, they submit it with:
+
+```
+POST /api/coder/exercise/:exerciseId/submit
+```
+
+```json
+{
+  "coder_id": 42,
+  "code": "SELECT u.full_name, mp.average_score FROM users u LEFT JOIN moodle_progress mp ON u.id = mp.coder_id;"
+}
+```
+
+Submissions are stored in `exercise_submissions`. There is no automatic grading — the TL reviews each submission manually via the [TL dashboard](/features/tl-dashboard) and can leave written feedback. When the TL approves a submission, the Coder earns Kairo score points.
+
+<Tip>
+  Get the most out of the AI tutor by asking specific, scoped questions. Instead of "explain databases", try "why does my GROUP BY query fail when I add an aggregate function?". The tutor is designed to give short answers first — if you need more detail, follow up with "can you show me an example?".
+</Tip>

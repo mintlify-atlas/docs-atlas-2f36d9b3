@@ -1,0 +1,90 @@
+---
+title: "Social authentication"
+description: "Sign in with Google or GitHub using OAuth 2.0. No OTP verification required for social auth users."
+---
+
+Kairo supports OAuth 2.0 sign-in via Google and GitHub using Passport.js strategies. Social auth creates an account automatically on first sign-in and establishes a session directly — no OTP step is required.
+
+<Note>
+  Social auth bypasses OTP verification. The session is established immediately after the OAuth provider redirects back to the callback URL. The user's account is automatically marked as `otp_verified = true`.
+</Note>
+
+## OAuth endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/auth/google` | Redirects to the Google consent screen |
+| `GET` | `/api/auth/google/callback` | Google OAuth callback URL |
+| `GET` | `/api/auth/github` | Redirects to the GitHub authorization page |
+| `GET` | `/api/auth/github/callback` | GitHub OAuth callback URL |
+
+## Google OAuth flow
+
+<Steps>
+  <Step title="Redirect to Google">
+    Navigate the user's browser to `GET /api/auth/google`. Passport.js redirects to Google's consent screen requesting the `profile` and `email` scopes. The `prompt=select_account` parameter is included so users can choose a different Google account.
+  </Step>
+  <Step title="User authorizes the app">
+    The user grants permission on Google's consent page.
+  </Step>
+  <Step title="Google callback">
+    Google redirects to `GET /api/auth/google/callback`. Passport.js exchanges the authorization code for an access token and fetches the user's profile.
+  </Step>
+  <Step title="Account lookup or creation">
+    The server looks up the user by email. If no account exists, a new one is created via `createOAuth()` with a placeholder password (`oauth_<provider>`) and the role defaults to `coder`.
+  </Step>
+  <Step title="Session established and redirect">
+    `socialAuthSuccess` saves the session, marks `otp_verified = true`, and redirects the browser to the frontend. If `first_login = true`, the user is sent to the onboarding page; otherwise to the coder dashboard.
+  </Step>
+</Steps>
+
+## GitHub OAuth flow
+
+<Steps>
+  <Step title="Redirect to GitHub">
+    Navigate the user's browser to `GET /api/auth/github`. Passport.js redirects to GitHub requesting the `user:email` scope.
+  </Step>
+  <Step title="User authorizes the app">
+    The user grants permission on GitHub's authorization page.
+  </Step>
+  <Step title="GitHub callback">
+    GitHub redirects to `GET /api/auth/github/callback`. Passport.js fetches the user's profile and primary email.
+  </Step>
+  <Step title="Account lookup or creation">
+    The server looks up the user by their primary GitHub email. If no account is found, a new one is created. If GitHub does not return an email, a placeholder address of `github_<id>@noreply.github.com` is used.
+  </Step>
+  <Step title="Session established and redirect">
+    Same as the Google flow — session is saved and the browser is redirected to the appropriate frontend page.
+  </Step>
+</Steps>
+
+## Failure redirects
+
+If the OAuth flow fails (user denies access, invalid state, etc.), the browser is redirected to the login page with an error query parameter:
+
+| Provider | Failure redirect |
+|---|---|
+| Google | `/login.html?error=google_failed` |
+| GitHub | `/login.html?error=github_failed` |
+
+## Required environment variables
+
+Social auth strategies are only registered if their corresponding environment variables are set. If missing, the provider is disabled and a warning is logged at startup.
+
+| Variable | Description |
+|---|---|
+| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 client secret |
+| `GITHUB_CLIENT_ID` | GitHub OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret |
+
+The OAuth callback URLs registered with each provider must match:
+
+- Google: `<BASE_URL>/api/auth/google/callback`
+- GitHub: `<BASE_URL>/api/auth/github/callback`
+
+In production, `BASE_URL` is derived from the `RAILWAY_PUBLIC_DOMAIN` environment variable.
+
+## First login and onboarding
+
+Social auth users are created with `first_login = true`. After the session is established, the `socialAuthSuccess` handler redirects them to the onboarding page where they must complete the soft skills assessment before accessing the main dashboard.

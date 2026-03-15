@@ -1,0 +1,98 @@
+---
+title: "Soft skills assessment"
+description: "Holistic self-assessment of five competencies that directly influences every AI-generated learning plan."
+---
+
+The soft skills assessment is a structured self-evaluation that every Coder completes during onboarding. It captures five behavioral competencies and a preferred learning style, and this data flows directly into every AI-generated plan as context for the language model.
+
+## The five dimensions
+
+Each dimension is scored on a scale of 1 to 5, where 1 indicates minimal ability or awareness and 5 indicates strong, independent capability.
+
+| Dimension | Field | What it measures |
+|---|---|---|
+| Autonomy | `autonomy` | Ability to work independently and self-direct learning |
+| Time management | `time_management` | Capacity to plan, prioritize, and meet deadlines |
+| Problem solving | `problem_solving` | Approach to debugging, reasoning, and overcoming blockers |
+| Communication | `communication` | Clarity when asking for help, writing, or collaborating |
+| Teamwork | `teamwork` | Effectiveness when working in groups or pairing |
+
+All five fields are enforced with `CHECK (field BETWEEN 1 AND 5)` at the database level.
+
+## Learning style
+
+In addition to the five dimensions, the assessment captures the Coder's preferred **learning style**:
+
+| Value | Description |
+|---|---|
+| `visual` | Learns best through diagrams, charts, and visual representations |
+| `auditory` | Learns best through listening, discussion, and verbal explanation |
+| `kinesthetic` | Learns best through hands-on practice and direct experimentation |
+| `mixed` | Adapts across multiple styles depending on context |
+
+The learning style is stored as a `learning_style_enum` and is used by the AI to tailor the tone, structure, and format of generated activities and focus cards.
+
+## When it is completed
+
+The assessment is presented during the first login flow (`first_login = true` on the `users` table). Once submitted, `first_login` is set to `false` and the Coder is redirected to their dashboard. The assessment is completed via the onboarding view at `frontend/src/views/coder/onboarding.html`.
+
+<Note>
+  The assessment must be completed before any learning plan can be generated. The plan generation endpoint (`POST /generate-plan`) checks for a soft skills record and returns HTTP 400 with `"No diagnostic found for coder {id}. Complete onboarding first."` if none exists.
+</Note>
+
+## How it affects the AI
+
+When the AI engine generates a plan, the full `soft_skills` object is passed as part of the LLM context:
+
+```json
+{
+  "soft_skills": {
+    "autonomy": 2,
+    "time_management": 4,
+    "problem_solving": 3,
+    "communication": 3,
+    "teamwork": 4,
+    "learning_style": "visual"
+  }
+}
+```
+
+The LLM uses this profile to:
+
+- Adjust the independence level of activities (lower `autonomy` → more guided activities)
+- Select appropriate `activity_type` values: `guided`, `semi_guided`, or `autonomous`
+- Frame explanations and examples to match the Coder's `learning_style`
+- Weight which of the five dimensions to target in `skill_focus` fields
+
+The same soft skills data is also used when generating focus cards via `POST /generate-focus-cards`, where `problem_solving`, `autonomy`, and `learning_style` directly shape the content of the six prioritized cards.
+
+## Database storage
+
+Assessment data is stored in the `soft_skills_assessment` table with a unique constraint per Coder:
+
+```sql
+CREATE TABLE soft_skills_assessment (
+  id              SERIAL PRIMARY KEY,
+  coder_id        INT NOT NULL UNIQUE,
+  autonomy        INT NOT NULL CHECK (autonomy BETWEEN 1 AND 5),
+  time_management INT NOT NULL CHECK (time_management BETWEEN 1 AND 5),
+  problem_solving INT NOT NULL CHECK (problem_solving BETWEEN 1 AND 5),
+  communication   INT NOT NULL CHECK (communication BETWEEN 1 AND 5),
+  teamwork        INT NOT NULL CHECK (teamwork BETWEEN 1 AND 5),
+  learning_style  learning_style_enum NOT NULL,
+  raw_answers     JSONB,
+  assessed_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+The `raw_answers` JSONB field stores the original questionnaire responses for auditing and future retraining of the AI model. The `UNIQUE` constraint on `coder_id` ensures each Coder has exactly one assessment record.
+
+## API endpoint
+
+The assessment is submitted to:
+
+```
+POST /api/diagnostics
+```
+
+This route is mounted by the Node.js gateway under the diagnostics router. The request body must include all five dimension scores (1–5) and a valid `learning_style` value. On success, the server writes the record to `soft_skills_assessment` and updates the user's `first_login` flag.

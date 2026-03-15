@@ -1,0 +1,79 @@
+---
+title: "Notifications"
+description: "In-app notification system that alerts Coders when Team Leaders send feedback."
+---
+
+Kairo's notification system delivers real-time alerts to Coders whenever a Team Leader sends feedback. Notifications are driven by the `tl_feedback` table and delivered over a Server-Sent Events (SSE) stream.
+
+<Note>
+  The notification system is directly tied to TL feedback — it is not a general-purpose pub/sub system. Every notification a Coder receives corresponds to a row in `tl_feedback`. There is no notification channel for other event types such as plan generation or score changes.
+</Note>
+
+## How notifications work
+
+When a TL submits feedback via `POST /api/tl/feedback`, the server:
+
+1. Inserts a row into `tl_feedback` with `is_read = false`
+2. Calls `notifyUser()` to push a real-time event to the Coder's SSE stream
+3. The Coder's browser receives the event and shows a notification dot on the bell icon
+
+The `is_read` field on `tl_feedback` is the source of truth for whether a notification has been seen. `false` = unread (red dot visible); `true` = read (dot hidden).
+
+Additionally, there is a separate `notifications` table used by the `notifyUser()` service for real-time delivery. This table stores `title`, `message`, `type`, `is_read`, and `related_id` fields and supports up to 30 notifications per user returned by the REST endpoint.
+
+## Notification types
+
+The `feedback_type_enum` defines three categories for TL feedback:
+
+| Type | Value | Use case |
+|---|---|---|
+| Weekly review | `weekly` | End-of-week summary or check-in from the TL |
+| Activity feedback | `activity` | Feedback on a specific plan activity or submission |
+| General | `general` | Ad-hoc messages, encouragement, or alerts |
+
+The type is visible to the Coder in their notification list alongside the TL's name and the feedback text.
+
+## Coder experience
+
+Coders see an unread notification count on their dashboard bell icon, calculated from the number of `tl_feedback` records with `is_read = false`. The last five feedback messages are included directly in the `GET /api/coder/dashboard` response under `notifications.items`.
+
+To mark a specific feedback message as read:
+
+```
+PATCH /api/coder/feedback/:id/read
+```
+
+This sets `is_read = true` and `read_at = NOW()` on the `tl_feedback` row. The server then sends a real-time notification back to the TL confirming the Coder has read the message.
+
+## TL side
+
+Team Leaders create notifications by submitting feedback:
+
+```
+POST /api/tl/feedback
+```
+
+```json
+{
+  "coderId": 42,
+  "feedbackText": "Your autonomy score is low — try completing tomorrow's activities without checking the solution first.",
+  "feedbackType": "activity"
+}
+```
+
+All three fields are required. The server sanitizes `feedbackText` and `feedbackType` before writing to the database. A successful response returns the newly created `tl_feedback` row with HTTP 201.
+
+When the Coder reads the feedback, the TL receives their own real-time notification: `"{CoderName} ha leído tu feedback"`.
+
+## Notification routes
+
+All notification routes are mounted at `/api/notifications` and require authentication.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/notifications/stream` | SSE stream — open a persistent connection to receive real-time events |
+| `GET` | `/api/notifications` | Fetch up to 30 notifications with unread count |
+| `POST` | `/api/notifications/read` | Mark all notifications as read |
+| `DELETE` | `/api/notifications/:id` | Delete a specific notification |
+
+The SSE stream endpoint sets `X-Accel-Buffering: no` to ensure correct behavior behind nginx or Railway reverse proxies. The connection stays open and events are pushed as `data: {...}\n\n` frames. When the browser tab closes or navigates away, the server cleans up the SSE client automatically via the `req.on('close', cleanup)` handler.

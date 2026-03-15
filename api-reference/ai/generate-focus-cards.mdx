@@ -1,0 +1,147 @@
+---
+title: "Generate focus cards"
+description: "Generate six prioritized focus cards (2 High, 2 Medium, 2 Low) highlighting the most critical study topics for a coder's current module."
+---
+
+This endpoint generates six AI-powered study cards tailored to a coder's soft skills profile and current module. Cards are ranked by urgency so the coder knows exactly where to focus first.
+
+The endpoint is available at two paths:
+
+| Path | Auth required | Role |
+|------|--------------|------|
+| `POST http://localhost:8000/generate-focus-cards` | No | — |
+| `POST http://localhost:3000/api/ai/generate-focus-cards` | Yes (session cookie) | `coder` |
+
+The Node.js proxy automatically resolves the coder's `module_id` and `struggling_topics` from their most recent Moodle progress record before forwarding to the Python service.
+
+---
+
+## Priority distribution
+
+Every response contains exactly **6 cards** in a fixed distribution:
+
+| Priority | Count | Focus |
+|----------|-------|-------|
+| `high` | 2 | Topics the coder is actively struggling with |
+| `medium` | 2 | Topics that need reinforcement |
+| `low` | 2 | Topics for consolidation or enrichment |
+
+---
+
+## Request body
+
+<ParamField body="coder_id" type="integer" required>
+  The ID of the coder to generate focus cards for. Used to fetch the soft skills profile for personalization.
+</ParamField>
+
+<ParamField body="module_id" type="integer" required>
+  The ID of the module to generate cards for. Determines the topic pool.
+</ParamField>
+
+<ParamField body="struggling_topics" type="string[]">
+  A list of topic names the coder is struggling with. High-priority cards are generated directly from this list. Defaults to an empty array.
+</ParamField>
+
+---
+
+## Example request
+
+```json
+{
+  "coder_id": 42,
+  "module_id": 3,
+  "struggling_topics": ["JOINs", "Subqueries"]
+}
+```
+
+---
+
+## Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the cards were generated successfully.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The response envelope returned by the LLM.
+
+  <Expandable title="properties">
+    <ResponseField name="cards" type="object[]">
+      Array of exactly 6 focus card objects.
+
+      <Expandable title="card properties">
+        <ResponseField name="priority" type="string">
+          Priority level: `"high"`, `"medium"`, or `"low"`.
+        </ResponseField>
+        <ResponseField name="topic" type="string">
+          The exact topic name from the module this card addresses.
+        </ResponseField>
+        <ResponseField name="title" type="string">
+          A short, actionable title for the card.
+        </ResponseField>
+        <ResponseField name="theory" type="string">
+          A 3–4 sentence explanation of the topic, adapted to the coder's learning style.
+        </ResponseField>
+        <ResponseField name="practice" type="object">
+          A 20-minute practice task.
+
+          <Expandable title="properties">
+            <ResponseField name="description" type="string">
+              What the coder should do.
+            </ResponseField>
+            <ResponseField name="example" type="string">
+              A concrete code snippet or step-by-step instructions.
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        <ResponseField name="pro_tips" type="string[]">
+          Two actionable tips for the topic.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## 200 — cards generated
+
+```json
+{
+  "success": true,
+  "data": {
+    "cards": [
+      {
+        "priority": "high",
+        "topic": "JOINs",
+        "title": "Master INNER JOIN with real data",
+        "theory": "An INNER JOIN returns rows where there is a matching value in both tables. It is the most common type of join and is used to combine related data across tables. Without it, you would have to query each table separately and merge results manually. Understanding JOINs is foundational for any relational database work.",
+        "practice": {
+          "description": "Write a query joining the orders and customers tables to list each customer's orders.",
+          "example": "SELECT c.name, o.total\nFROM customers c\nINNER JOIN orders o ON c.id = o.customer_id;"
+        },
+        "pro_tips": [
+          "Always alias your tables to keep queries readable.",
+          "Check for NULL values before joining on optional foreign keys."
+        ]
+      },
+      {
+        "priority": "medium",
+        "topic": "Indexes",
+        "title": "Speed up queries with indexes",
+        "theory": "...",
+        "practice": { "description": "...", "example": "..." },
+        "pro_tips": ["...", "..."]
+      }
+    ]
+  }
+}
+```
+
+## 500 — LLM returned invalid JSON
+
+```json
+{
+  "detail": "La IA devolvió JSON inválido"
+}
+```

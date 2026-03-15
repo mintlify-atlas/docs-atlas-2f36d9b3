@@ -1,0 +1,113 @@
+---
+title: "Authentication"
+description: "Kairo uses server-side session authentication. All protected routes require an active session cookie."
+---
+
+Kairo authenticates users with server-managed sessions stored in PostgreSQL. There are no API keys or Bearer tokens. When a session is established, the server sets an `httpOnly` cookie (`riwi.sid`) that the browser automatically includes on subsequent requests.
+
+## How sessions work
+
+When you register, verify your OTP, or log in, Passport.js calls `req.login()` which serializes the user ID into the session store. The session is stored in the `session` table in PostgreSQL via `connect-pg-simple`. On each request to a protected endpoint, the `isAuthenticated` middleware looks up the session by cookie and attaches the user to `req.user`.
+
+Sessions expire after **24 hours**. After expiry, the user must log in again.
+
+## Registration flow
+
+<Steps>
+  <Step title="Submit registration">
+    `POST /api/auth/register` with `email`, `password`, `full_name`, `role`, and optional `clan_id`. The server hashes the password with bcrypt, creates the user with `otp_verified = false`, and sends a 6-digit OTP to the provided email.
+  </Step>
+  <Step title="Verify OTP">
+    `POST /api/auth/verify-otp` with the `email` and the 6-digit `otp` code. The server marks `otp_verified = true` and calls `req.login()` to establish a session.
+  </Step>
+  <Step title="Session active">
+    The `riwi.sid` cookie is now set. The user is authenticated and can access protected endpoints.
+  </Step>
+  <Step title="Complete onboarding (coders only)">
+    Coders with `first_login = true` are expected to complete the soft skills assessment. The `checkOnboarding` middleware on coder routes will block access to the dashboard until onboarding is finished.
+  </Step>
+</Steps>
+
+## Login flow
+
+<Steps>
+  <Step title="Submit credentials">
+    `POST /api/auth/login` with `email` and `password`. The server compares the password against the bcrypt hash.
+  </Step>
+  <Step title="Unverified account check">
+    If the account has not completed OTP verification (`otp_verified = false`), the server returns `403` and automatically sends a new OTP code to the email.
+  </Step>
+  <Step title="Session created">
+    On success, the server calls `req.login()` and the `riwi.sid` cookie is set in the response.
+  </Step>
+  <Step title="Onboarding redirect">
+    If `first_login = true`, the coder should be redirected to the onboarding flow before accessing the main dashboard.
+  </Step>
+</Steps>
+
+## Social authentication
+
+Coders and TLs can sign in using Google or GitHub OAuth 2.0 via Passport.js. The OAuth flows do not require OTP verification — the session is established immediately after the provider callback.
+
+See [Social authentication](/api-reference/auth/social-auth) for full details.
+
+## Checking the current session
+
+To verify whether a session is active, use either endpoint:
+
+- `GET /api/auth/check` — public endpoint, returns `{ authenticated: false }` if no session
+- `GET /api/auth/me` — protected by `isAuthenticated`, returns `401` if no session
+
+Both return the same shape on success:
+
+```json
+{
+  "authenticated": true,
+  "user": {
+    "id": 42,
+    "email": "alex@riwi.io",
+    "fullName": "Alex Coder",
+    "role": "coder",
+    "clanId": "Turing",
+    "firstLogin": false
+  }
+}
+```
+
+## Logout
+
+`POST /api/auth/logout` destroys the server-side session and clears the `riwi.sid` cookie:
+
+```javascript
+await fetch('http://localhost:3000/api/auth/logout', {
+  method: 'POST',
+  credentials: 'include'
+});
+```
+
+## Making authenticated requests
+
+Include `credentials: 'include'` on every fetch call. The browser will automatically attach the `riwi.sid` cookie:
+
+```javascript
+const res = await fetch('http://localhost:3000/api/coder/dashboard', {
+  credentials: 'include'
+});
+```
+
+## Role enforcement
+
+Protected routes are guarded by two middleware functions:
+
+- `isAuthenticated` — checks that a valid session exists
+- `hasRole('coder')` or `hasRole('tl')` — checks that the session user has the required role
+
+<Note>
+  The `coder` role is for bootcamp students. The `tl` role is for Team Leaders who manage and monitor a cohort. These roles are mutually exclusive — a `coder` cannot access TL endpoints and vice versa. The role is set at registration and cannot be changed via the API.
+</Note>
+
+## Onboarding gate
+
+Coder routes include the `checkOnboarding` middleware. If a coder has `first_login = true`, the middleware returns `403 Onboarding Required` and blocks access to the main application until the soft skills assessment is completed via `PATCH /api/auth/complete-onboarding`.
+
+TL accounts bypass the onboarding gate entirely.

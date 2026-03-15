@@ -1,0 +1,118 @@
+---
+title: "Feedback"
+description: "Send feedback messages to coders in the TL's clan."
+---
+
+All routes in this group require an active session with `role = tl`.
+
+<Note>
+  When a TL submits feedback, a real-time notification is automatically created for the coder with `is_read = false`. The notification appears as an unread indicator in the coder's dashboard until they mark it as read via `PATCH /api/coder/feedback/:id/read`.
+</Note>
+
+---
+
+## Send feedback
+
+**POST** `/api/tl/feedback`
+
+Sends a feedback message to a coder. The message is saved to the `tl_feedback` table and a notification is dispatched to the coder in real time. All three core fields are required.
+
+### Request body
+
+<ParamField body="coderId" type="number" required>
+  The user ID of the coder to send feedback to. The coder must be in the TL's clan.
+</ParamField>
+
+<ParamField body="feedbackText" type="string" required>
+  The feedback message body. Input is sanitized before storage.
+</ParamField>
+
+<ParamField body="feedbackType" type="string" required>
+  The category of feedback. Accepted values:
+  - `"weekly"` — end-of-week performance review
+  - `"activity"` — feedback on a specific activity or submission
+  - `"general"` — general coaching or observations
+</ParamField>
+
+<ParamField body="planId" type="number">
+  Optional. The ID of a specific learning plan this feedback relates to. When provided, the feedback is linked to that plan in the database.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "coderId": 42,
+  "feedbackText": "Great progress this week on SQL. Focus on query optimization next.",
+  "feedbackType": "weekly",
+  "planId": 17
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when feedback was created successfully.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message: `"Feedback registered"`.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The newly created feedback record.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Feedback record ID.
+    </ResponseField>
+    <ResponseField name="coder_id" type="number">
+      ID of the coder who received the feedback.
+    </ResponseField>
+    <ResponseField name="tl_id" type="number">
+      ID of the TL who sent the feedback.
+    </ResponseField>
+    <ResponseField name="plan_id" type="number | null">
+      ID of the linked plan, or `null` if not associated with a plan.
+    </ResponseField>
+    <ResponseField name="feedback_text" type="string">
+      The sanitized feedback message.
+    </ResponseField>
+    <ResponseField name="feedback_type" type="string">
+      The feedback category: `"weekly"`, `"activity"`, or `"general"`.
+    </ResponseField>
+    <ResponseField name="is_read" type="boolean">
+      Always `false` on creation — the coder has not yet read this feedback.
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 timestamp of when the feedback was created.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 201 — feedback created
+
+```json
+{
+  "success": true,
+  "message": "Feedback registered",
+  "data": {
+    "id": 31,
+    "coder_id": 42,
+    "tl_id": 7,
+    "plan_id": 17,
+    "feedback_text": "Great progress this week on SQL. Focus on query optimization next.",
+    "feedback_type": "weekly",
+    "is_read": false,
+    "created_at": "2026-03-15T10:00:00.000Z"
+  }
+}
+```
+
+### 400 — missing fields
+
+```json
+{
+  "error": "All fields are required"
+}
+```

@@ -1,0 +1,136 @@
+---
+title: "API overview"
+description: "Base URL, authentication model, request format, and common response patterns for the Kairo API."
+---
+
+Kairo exposes two independent HTTP APIs: a Node.js API Gateway that handles business logic, authentication, and session management, and a Python AI Microservice that handles LLM inference and embeddings. Most client interactions go through the Node.js gateway.
+
+## Base URLs
+
+| Service | Base URL | Port |
+|---|---|---|
+| Node.js API Gateway | `http://localhost:3000` | 3000 |
+| Python AI Microservice | `http://localhost:8000` | 8000 |
+
+## Authentication
+
+The Kairo API uses **server-side session authentication** backed by PostgreSQL. After a successful login or OTP verification, the server sets a `riwi.sid` session cookie in the response. All subsequent requests to protected endpoints must include this cookie.
+
+There are no Bearer tokens. Do not send an `Authorization` header for session-protected routes.
+
+<Note>
+  Every browser `fetch` call to the Kairo API must include `credentials: 'include'`. Without it, the browser will not send the `riwi.sid` cookie and all protected endpoints will return `401 Unauthorized`.
+
+  ```javascript
+  const res = await fetch('http://localhost:3000/api/coder/dashboard', {
+    credentials: 'include'
+  });
+  ```
+</Note>
+
+### Session cookie details
+
+| Property | Value |
+|---|---|
+| Cookie name | `riwi.sid` |
+| `httpOnly` | `true` — not accessible from JavaScript |
+| `secure` | `true` in production, `false` in development |
+| `sameSite` | `none` in production, `lax` in development |
+| `maxAge` | 24 hours |
+| Storage | PostgreSQL (`session` table via `connect-pg-simple`) |
+
+<Warning>
+  In production, the `riwi.sid` cookie is set with `SameSite=None; Secure`. This means the API **must be served over HTTPS** in production. Browsers will refuse to send the cookie over plain HTTP, which will break all authenticated requests.
+</Warning>
+
+## Request format
+
+All `POST` and `PATCH` requests must include the `Content-Type: application/json` header and a JSON body.
+
+```bash
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -b "riwi.sid=<your-session-id>" \
+  -d '{"email": "alex@riwi.io", "password": "secret"}'
+```
+
+## Response format
+
+### Success responses
+
+Successful responses return HTTP `200` or `201` with a JSON body. Most endpoints follow this shape:
+
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+Some endpoints (such as auth endpoints) return the payload at the top level without a `data` wrapper — see the individual endpoint pages for exact shapes.
+
+### Error responses
+
+Errors return an appropriate HTTP status code with a JSON body:
+
+```json
+{
+  "error": true,
+  "message": "Description of what went wrong."
+}
+```
+
+### 404 — endpoint not found
+
+Requests to undefined routes return:
+
+```json
+{
+  "error": "Endpoint not found"
+}
+```
+
+## Rate limiting
+
+The API Gateway applies rate limits to authentication endpoints to prevent brute-force and abuse.
+
+| Limiter | Applies to | Limit |
+|---|---|---|
+| `authLimiter` | `/api/auth/login`, `/api/auth/register` | 20 requests per 15 minutes per IP |
+| `otpLimiter` | `/api/auth/verify-otp`, `/api/auth/resend-otp` | 5 requests per 10 minutes per IP |
+
+When the limit is exceeded, the server responds with `429 Too Many Requests`:
+
+```json
+{ "error": "Too many requests, please try again later." }
+```
+
+## Role-based access
+
+Protected routes enforce role-based access using the `hasRole()` middleware. The two roles in the system are:
+
+| Role | Description |
+|---|---|
+| `coder` | Bootcamp student. Has access to their own dashboard, plans, activities, and the AI tutor. |
+| `tl` | Team Leader. Has access to cohort analytics, feedback tools, and AI report generation. |
+
+Attempting to access an endpoint that requires a different role returns `403 Forbidden`:
+
+```json
+{
+  "error": "Forbidden",
+  "message": "Access denied. Requires one of: [tl]"
+}
+```
+
+## CORS
+
+The API Gateway enforces a CORS allowlist. In development, the allowed origins are `http://localhost:5500` and `http://localhost:5173`. In production, the allowed origin is derived from the `FRONTEND_URL` environment variable.
+
+All requests must include credentials:
+
+```javascript
+fetch('http://localhost:3000/api/auth/check', {
+  credentials: 'include'
+})
+```

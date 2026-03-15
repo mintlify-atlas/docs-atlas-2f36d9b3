@@ -1,0 +1,82 @@
+---
+title: "Introduction"
+description: "Kairo is an AI-powered personalized learning platform that transforms bootcamp data into adaptive 4-week growth paths for every student."
+---
+
+## What is Kairo?
+
+Kairo is an intelligent learning ecosystem built for Riwi's intensive bootcamp programs. It bridges the gap between a fast-paced curriculum and individual learning needs by analyzing academic performance and soft skills to generate personalized study plans — so no Coder falls behind.
+
+The platform serves two distinct user roles:
+
+- **Coders** — Bootcamp students who receive AI-generated learning plans, access an AI tutor, complete exercises, and submit evidence of their work.
+- **Team Leaders (TLs)** — Instructors and mentors who monitor cohort performance, identify at-risk students, provide feedback, and generate AI reports.
+
+## How it works
+
+<Steps>
+  <Step title="Complete onboarding">
+    Coders register, verify their email, and complete a soft skills self-assessment covering autonomy, time management, communication, teamwork, and problem solving.
+  </Step>
+  <Step title="Receive a personalized plan">
+    Kairo's AI engine (powered by Groq's LLM) analyzes the soft skills assessment and Moodle academic progress data to generate a custom 4-week study plan with prioritized focus cards.
+  </Step>
+  <Step title="Work through daily activities">
+    Coders complete guided, semi-guided, and autonomous activities, submit evidence, and chat with the AI tutor for support.
+  </Step>
+  <Step title="Team Leaders monitor and intervene">
+    TLs track completion rates, review evidence submissions, provide feedback, and use AI-generated reports to proactively identify at-risk Coders before academic failure occurs.
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Adaptive Learning Plans" icon="brain" href="/features/personalized-learning-plans">
+    AI-generated 4-week study plans tailored to each Coder's academic performance and learning style.
+  </Card>
+  <Card title="Soft Skills Assessment" icon="chart-bar" href="/features/soft-skills-assessment">
+    Holistic evaluation of autonomy, communication, teamwork, and more — integrated directly into the learning plan.
+  </Card>
+  <Card title="AI Tutor" icon="message-bot" href="/features/ai-tutor">
+    Chat with an AI tutor powered by Groq's LLM for on-demand help with exercises and concepts.
+  </Card>
+  <Card title="TL Analytics Dashboard" icon="gauge" href="/features/tl-dashboard">
+    Real-time visibility into cohort performance with risk detection and automated flagging of at-risk Coders.
+  </Card>
+  <Card title="Focus Cards" icon="cards-blank" href="/features/personalized-learning-plans">
+    Six prioritized study cards (2 High, 2 Medium, 2 Low) that surface the most critical topics for each Coder.
+  </Card>
+  <Card title="Resource Library" icon="books" href="/api-reference/coder/resources">
+    Semantic search over curated PDF resources using sentence embeddings (all-MiniLM-L6-v2).
+  </Card>
+</CardGroup>
+
+## Architecture
+
+Kairo runs as a distributed system with three independent services:
+
+| Service | Technology | Role |
+|---|---|---|
+| **API Gateway** | Node.js + Express | Business logic, auth, session management |
+| **AI Microservice** | Python + FastAPI | LLM inference, plan generation, embeddings |
+| **Database** | PostgreSQL (Supabase) | Persistent storage for users, plans, and logs |
+
+See the [Architecture overview](/architecture) for the full system diagram and service interactions.
+
+## Quick links
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get Kairo running locally in minutes
+  </Card>
+  <Card title="Coder guide" icon="graduation-cap" href="/guides/coder-guide">
+    Complete walkthrough for Coders
+  </Card>
+  <Card title="Team Leader guide" icon="users" href="/guides/team-leader-guide">
+    How TLs manage their cohort
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/overview">
+    Full REST API documentation
+  </Card>
+</CardGroup>

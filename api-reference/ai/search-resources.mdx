@@ -1,0 +1,129 @@
+---
+title: "Search resources"
+description: "Semantic search over uploaded PDF resources using sentence embeddings. Returns ranked results with similarity scores."
+---
+
+This endpoint searches the PDF resources uploaded by Team Leaders and returns the most relevant results for a given topic. It is used internally by the AI service to attach contextual study materials to learning plan activities and focus cards.
+
+**Endpoint:** `POST http://localhost:8000/search-resources`
+
+<Note>
+  This endpoint is served directly by the Python AI microservice. It is not proxied through the Node.js gateway.
+</Note>
+
+---
+
+## Search strategy
+
+The service uses a two-stage fallback strategy:
+
+1. **Text search** — full-text search against resource titles and preview text, scoped to the clan and optional module. This works without the embedding model.
+2. **Recency fallback** — if text search returns no results and a `module_id` is provided, returns the most recently uploaded resources for that clan and module, ordered by recency.
+
+<Info>
+  The service loads the `all-MiniLM-L6-v2` model (384-dimensional embeddings) at startup. When the model is available, it is used internally for semantic ranking within the AI pipelines. The `/search-resources` endpoint itself currently uses text search as the primary path.
+</Info>
+
+---
+
+## Request body
+
+<ParamField body="topic" type="string" required>
+  The topic or query to search for. Used as the search term against resource titles and preview text.
+</ParamField>
+
+<ParamField body="clan_id" type="string" required>
+  The clan identifier to scope results to (e.g., `"Turing"`). Resources are always scoped to a single clan.
+</ParamField>
+
+<ParamField body="module_id" type="integer">
+  Optional. Filter results to resources associated with a specific module. Also used as the scope for the recency fallback.
+</ParamField>
+
+<ParamField body="limit" type="integer">
+  Maximum number of results to return. Defaults to `3`.
+</ParamField>
+
+<ParamField body="coder_id" type="integer">
+  Optional. The ID of the coder making the request. Accepted for logging context but not used to filter results.
+</ParamField>
+
+---
+
+## Example request
+
+```json
+{
+  "topic": "SQL indexes and query optimization",
+  "clan_id": "Turing",
+  "module_id": 4,
+  "limit": 3,
+  "coder_id": 42
+}
+```
+
+---
+
+## Responses
+
+<ResponseField name="success" type="boolean">
+  Always `true`. An empty `resources` array is returned when no results are found rather than an error.
+</ResponseField>
+
+<ResponseField name="resources" type="object[]">
+  Ranked list of matching resource objects. Empty array if no matches were found.
+
+  <Expandable title="resource properties">
+    <ResponseField name="id" type="integer">
+      Resource ID.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      The resource title set by the TL when uploading.
+    </ResponseField>
+    <ResponseField name="file_name" type="string">
+      Original filename of the PDF.
+    </ResponseField>
+    <ResponseField name="preview_text" type="string | null">
+      Extracted text preview from the PDF content. Used for text matching.
+    </ResponseField>
+    <ResponseField name="uploaded_at" type="string">
+      ISO 8601 upload timestamp.
+    </ResponseField>
+    <ResponseField name="module_id" type="integer | null">
+      The module this resource is associated with.
+    </ResponseField>
+    <ResponseField name="clan" type="string">
+      The clan this resource belongs to.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## 200 — results found
+
+```json
+{
+  "success": true,
+  "resources": [
+    {
+      "id": 8,
+      "title": "PostgreSQL indexing guide",
+      "file_name": "postgres-indexes.pdf",
+      "preview_text": "An index allows the database to find rows without scanning the full table. B-tree indexes are the default and work well for equality and range queries...",
+      "uploaded_at": "2026-03-10T14:00:00.000Z",
+      "module_id": 4,
+      "clan": "Turing"
+    }
+  ]
+}
+```
+
+## 200 — no results
+
+```json
+{
+  "success": true,
+  "resources": []
+}
+```

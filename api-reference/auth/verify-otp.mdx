@@ -1,0 +1,152 @@
+---
+title: "Verify OTP"
+description: "Verify a one-time password sent to your email to activate your account."
+---
+
+`POST /api/auth/verify-otp`
+
+Verifies the 6-digit OTP sent to the user's email after registration. On success, the account is activated (`otp_verified = true`) and a session is established.
+
+**Auth required:** No
+
+<Warning>
+  This endpoint is rate-limited to **5 attempts per 10 minutes** per IP (`otpLimiter`). Exceeding the limit returns `429 Too Many Requests`. Wait 10 minutes before retrying.
+</Warning>
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  The email address used during registration.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The 6-digit OTP sent to the email address. The code expires after 15 minutes.
+</ParamField>
+
+## Example request
+
+```json
+{
+  "email": "alex@riwi.io",
+  "code": "482910"
+}
+```
+
+## Responses
+
+<ResponseField name="success" type="boolean">
+  `true` on successful verification.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The newly activated user's profile.
+
+  <Expandable title="user properties">
+    <ResponseField name="id" type="number">
+      The user's numeric ID.
+    </ResponseField>
+    <ResponseField name="fullName" type="string">
+      The user's display name.
+    </ResponseField>
+    <ResponseField name="role" type="string">
+      The user's role: `"coder"` or `"tl"`.
+    </ResponseField>
+    <ResponseField name="clanId" type="string">
+      The user's clan identifier. May be `null`.
+    </ResponseField>
+    <ResponseField name="firstLogin" type="boolean">
+      `true` for newly registered users who have not completed onboarding.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 200 — OTP verified
+
+The `riwi.sid` session cookie is set in the response.
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": 42,
+    "fullName": "Alex Coder",
+    "role": "coder",
+    "clanId": "Turing",
+    "firstLogin": true
+  }
+}
+```
+
+### 400 — invalid or expired OTP
+
+Returned when the code is wrong, has already been used, or has expired (codes expire after 15 minutes).
+
+```json
+{
+  "error": "Invalid or expired code."
+}
+```
+
+### 429 — rate limit exceeded
+
+```json
+{
+  "error": "Too many OTP attempts."
+}
+```
+
+---
+
+## Resend OTP
+
+`POST /api/auth/resend-otp`
+
+Sends a new OTP code to the provided email. Any previously issued codes for that email are invalidated before the new code is created.
+
+**Auth required:** No
+
+<Warning>
+  This endpoint is also covered by `otpLimiter` (5 requests per 10 minutes per IP).
+</Warning>
+
+### Request body
+
+<ParamField body="email" type="string" required>
+  The email address to send a new OTP to. The account must exist and must not already be verified.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "email": "alex@riwi.io"
+}
+```
+
+### 200 — OTP resent
+
+```json
+{
+  "success": true,
+  "message": "A new verification code has been sent.",
+  "ttl": 900
+}
+```
+
+### 404 — user not found
+
+```json
+{
+  "error": "User not found."
+}
+```
+
+### 400 — already verified
+
+Returned if the account has already completed OTP verification.
+
+```json
+{
+  "error": "Email already verified. Please login."
+}
+```

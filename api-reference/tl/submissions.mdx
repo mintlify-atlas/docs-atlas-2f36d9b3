@@ -1,0 +1,179 @@
+---
+title: "Submissions"
+description: "View and review exercise submissions from coders in the TL's clan."
+---
+
+All routes in this group require an active session with `role = tl`. Submissions are automatically scoped to coders in the TL's clan.
+
+---
+
+## List submissions
+
+**GET** `/api/tl/submissions`
+
+Returns the 50 most recent exercise submissions from coders in the TL's clan, ordered by submission time with the newest first. Includes full exercise details and coder identity for each submission.
+
+### Responses
+
+<ResponseField name="submissions" type="object[]">
+  List of exercise submissions.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Submission ID.
+    </ResponseField>
+    <ResponseField name="code_submitted" type="string">
+      The code the coder submitted.
+    </ResponseField>
+    <ResponseField name="submitted_at" type="string">
+      ISO 8601 timestamp of when the submission was made.
+    </ResponseField>
+    <ResponseField name="tl_feedback_text" type="string | null">
+      Feedback left by the TL on this submission. `null` if not yet reviewed.
+    </ResponseField>
+    <ResponseField name="reviewed_at" type="string | null">
+      ISO 8601 timestamp of when the TL reviewed the submission. `null` if not yet reviewed.
+    </ResponseField>
+    <ResponseField name="reviewed_by" type="number | null">
+      User ID of the TL who reviewed the submission.
+    </ResponseField>
+    <ResponseField name="exercise_title" type="string">
+      Title of the exercise.
+    </ResponseField>
+    <ResponseField name="language" type="string">
+      Programming language of the exercise.
+    </ResponseField>
+    <ResponseField name="difficulty" type="string">
+      Difficulty level of the exercise.
+    </ResponseField>
+    <ResponseField name="topic" type="string">
+      Topic the exercise covers.
+    </ResponseField>
+    <ResponseField name="solution" type="string | null">
+      The reference solution for the exercise, if available.
+    </ResponseField>
+    <ResponseField name="expected_output" type="string | null">
+      Expected output description for the exercise.
+    </ResponseField>
+    <ResponseField name="day_number" type="number">
+      Plan day this exercise belongs to.
+    </ResponseField>
+    <ResponseField name="coder_name" type="string">
+      Display name of the coder who submitted.
+    </ResponseField>
+    <ResponseField name="coder_id" type="number">
+      User ID of the coder.
+    </ResponseField>
+    <ResponseField name="plan_id" type="number">
+      ID of the learning plan this exercise belongs to.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "submissions": [
+    {
+      "id": 109,
+      "code_submitted": "SELECT c.name, COUNT(o.id) AS order_count FROM customers c INNER JOIN orders o ON o.customer_id = c.id GROUP BY c.id;",
+      "submitted_at": "2026-03-15T09:00:00.000Z",
+      "tl_feedback_text": null,
+      "reviewed_at": null,
+      "reviewed_by": null,
+      "exercise_title": "Customer order summary",
+      "language": "sql",
+      "difficulty": "intermediate",
+      "topic": "SQL JOINs",
+      "solution": "SELECT c.name, COUNT(o.id) AS order_count FROM customers c INNER JOIN orders o ON o.customer_id = c.id GROUP BY c.id, c.name;",
+      "expected_output": "A table with columns: customer_name, order_count",
+      "day_number": 3,
+      "coder_name": "Alex Coder",
+      "coder_id": 42,
+      "plan_id": 17
+    }
+  ]
+}
+```
+
+---
+
+## Review a submission
+
+**POST** `/api/tl/submissions/:id/review`
+
+Leaves feedback on a coder's exercise submission. Saves the feedback text to the submission record, awards Kairo points to the coder for having their work reviewed, and dispatches a real-time notification to the coder.
+
+### Path parameters
+
+<ParamField path="id" type="number" required>
+  The ID of the submission to review. Must belong to a coder in the TL's clan.
+</ParamField>
+
+### Request body
+
+<ParamField body="feedbackText" type="string" required>
+  The TL's review comments on the submission. Cannot be empty or whitespace-only.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "feedbackText": "Good approach! You got the JOIN right. Add GROUP BY c.name to avoid ambiguity."
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the review was saved successfully.
+</ResponseField>
+
+<ResponseField name="submission" type="object">
+  The updated submission fields.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Submission ID.
+    </ResponseField>
+    <ResponseField name="tl_feedback_text" type="string">
+      The saved feedback text.
+    </ResponseField>
+    <ResponseField name="reviewed_at" type="string">
+      ISO 8601 timestamp of when the review was saved.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 200 — review saved
+
+```json
+{
+  "success": true,
+  "submission": {
+    "id": 109,
+    "tl_feedback_text": "Good approach! You got the JOIN right. Add GROUP BY c.name to avoid ambiguity.",
+    "reviewed_at": "2026-03-15T11:30:00.000Z"
+  }
+}
+```
+
+### 400 — missing feedback
+
+```json
+{
+  "error": "feedbackText es requerido."
+}
+```
+
+### 404 — submission not found or unauthorized
+
+Returned when the submission does not exist or belongs to a coder outside the TL's clan.
+
+```json
+{
+  "error": "Submission no encontrada o no autorizada."
+}
+```

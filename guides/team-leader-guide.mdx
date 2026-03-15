@@ -1,0 +1,252 @@
+---
+title: "Team Leader guide"
+description: "How Team Leaders monitor cohort performance, identify at-risk Coders, provide feedback, and generate AI reports."
+---
+
+As a Team Leader (TL), your role in Kairo is to monitor your clan's progress, intervene early when a Coder is at risk, and provide feedback that guides their development. Kairo gives you real-time data on every Coder in your clan — their scores, soft skills profile, activity completions, and any active risk flags.
+
+<Note>
+  Your account has `role = 'tl'` in the system. You share a `clan` identifier with the Coders you supervise. All data you see in the TL views is scoped to your clan.
+</Note>
+
+## What you can do with Kairo
+
+<CardGroup cols={2}>
+  <Card title="Cohort monitoring" icon="users">
+    View every Coder in your clan with their Moodle average score, current week, Kairo score, and unresolved risk level — all from the TL dashboard.
+  </Card>
+  <Card title="Risk detection" icon="triangle-alert">
+    Kairo automatically flags Coders showing signs of academic struggle. Flags are ranked by severity and surfaced prominently on the dashboard.
+  </Card>
+  <Card title="Feedback" icon="message-square">
+    Send weekly check-ins, activity-specific notes, or general messages directly to individual Coders. They receive real-time notifications.
+  </Card>
+  <Card title="Submission review" icon="file-check">
+    Review exercise submissions from Coders in your clan. Read submitted code, compare it to the expected output, and leave written feedback.
+  </Card>
+  <Card title="AI reports" icon="brain">
+    Generate executive reports for a Coder, your full clan, or the entire cohort. Each report includes a current state summary, main risks, and concrete action items.
+  </Card>
+  <Card title="Resource management" icon="folder-up">
+    Upload PDF resources for your Coders to access from the resource library. Files up to 20 MB are supported.
+  </Card>
+</CardGroup>
+
+## TL dashboard
+
+Open `tl/dashboard.html` to access the main TL view. The dashboard is populated by:
+
+```bash
+GET /api/tl/dashboard
+```
+
+It returns your TL profile and clan ID, plus the full list of Coders in your clan with the following per-Coder data:
+
+| Field | Description |
+|---|---|
+| `full_name`, `email` | Coder identity |
+| `kairo_score` | Total engagement points |
+| `average_score` | Latest Moodle average (0–100) |
+| `current_week` | Current week in their active module |
+| `first_login` | `true` if they have not completed onboarding |
+| `risk_level` | Unresolved risk flag level, if any |
+| `autonomy`, `time_management`, `problem_solving`, `communication`, `teamwork` | Individual soft skill scores (1–5) |
+| `learning_style` | Preferred learning style from onboarding |
+
+The dashboard overview section also shows clan-wide aggregates: total Coders, onboarding completion count, number of high-risk Coders, and the clan's average Kairo score.
+
+You can drill into a specific Coder's full profile, soft skills, and Moodle history from the **group view** at `tl/group.html`.
+
+## Understanding risk levels
+
+Kairo automatically assigns a risk level to each Coder based on two signals: their `autonomy` score from the soft skills assessment and their `average_score` from Moodle.
+
+| Risk level | Condition | Meaning |
+|---|---|---|
+| `high` | `autonomy ≤ 2` **and** `average_score < 70` | Both signals are critical — immediate follow-up recommended |
+| `medium` | `autonomy ≤ 2` **or** `average_score < 70` | One risk factor present — monitor closely and consider proactive outreach |
+| `low` | Neither condition met | Coder is on track |
+
+Risk flags are stored in the `risk_flags` table. System-detected flags have `auto_detected = true`. Flags remain active until manually resolved. The Coder list on your dashboard is sorted by risk severity: high-risk Coders appear at the top.
+
+<Warning>
+  The risk detection system is a support tool, not a definitive diagnosis. A `high` flag means the data signals concern — it does not mean the Coder will fail. Use the flags as a starting point for a conversation, not as a final judgment.
+</Warning>
+
+## Proactive intervention
+
+Identifying Coders before failure rather than after is the core purpose of the risk system. When you see a Coder with a `medium` or `high` flag:
+
+<Steps>
+  <Step title="Review their profile">
+    Open the Coder's detail view from `tl/group.html`. Look at their five soft skill scores, their current Moodle week, average score, and which topics they are struggling with.
+  </Step>
+  <Step title="Check their plan progress">
+    See how many of the 20 plan days they have completed and which activities remain open. Inactivity on the plan can compound the risk.
+  </Step>
+  <Step title="Send a feedback message">
+    Send a targeted `activity` or `general` feedback message (see Providing feedback below). The Coder receives a real-time notification and a red dot on their bell icon.
+  </Step>
+  <Step title="Review their exercise submissions">
+    Navigate to `tl/assignment.html` to see submitted exercises from your clan. Leave written feedback to reinforce correct approaches or correct misconceptions.
+  </Step>
+  <Step title="Generate an AI report">
+    Generate a Coder-level report from `tl/dashboard.html` for a data-driven summary with concrete recommendations you can act on.
+  </Step>
+</Steps>
+
+## Providing feedback
+
+Send feedback to any Coder in your clan:
+
+```bash
+POST /api/tl/feedback
+```
+
+```json
+{
+  "coderId": 42,
+  "feedbackText": "Great progress this week. Focus more on your JOIN queries.",
+  "feedbackType": "weekly"
+}
+```
+
+All three fields are required. Valid `feedbackType` values:
+
+| Type | Use case |
+|---|---|
+| `weekly` | End-of-week summary or check-in |
+| `activity` | Feedback on a specific plan activity or exercise |
+| `general` | Ad-hoc messages, encouragement, or alerts |
+
+The Coder receives a real-time push notification and an unread indicator on their dashboard bell. When they read your message, you receive a confirmation notification in return.
+
+## Reviewing evidence submissions
+
+Coders submit exercise solutions for your review. Access them from `tl/assignment.html` or:
+
+```bash
+GET /api/tl/submissions
+```
+
+Each submission includes:
+
+- Coder name and ID
+- Exercise title, language, difficulty, and topic
+- Submitted code
+- Expected output and model solution for comparison
+- Submission timestamp
+- Whether you have already reviewed it
+
+### Leaving feedback on a submission
+
+<Steps>
+  <Step title="Open the submission">
+    Find the submission in the list on `tl/assignment.html`. You can see the Coder's code alongside the expected output.
+  </Step>
+  <Step title="Write your feedback">
+    Enter your feedback in the text field. Be specific — reference the part of the code you are commenting on.
+  </Step>
+  <Step title="Submit the review">
+    ```bash
+    POST /api/tl/submissions/:id/review
+    ```
+
+    ```json
+    {
+      "feedbackText": "Your query is correct but consider using an index on coder_id for better performance."
+    }
+    ```
+
+    The Coder is notified in real-time and earns Kairo score points for having their work reviewed.
+  </Step>
+</Steps>
+
+<Note>
+  You can only review submissions from Coders in your own clan. Attempts to access submissions from other clans return HTTP 404.
+</Note>
+
+## Score ranking
+
+View your clan's leaderboard and the global top 10 from the dashboard:
+
+```bash
+GET /api/tl/ranking
+```
+
+This returns two ranked lists:
+
+- **Clan ranking** — all active Coders in your clan, sorted by `kairo_score` descending
+- **Global ranking** — the top 10 Coders across all clans
+
+For a Coder's individual score history (last 20 events):
+
+```bash
+GET /api/tl/coder/:id/score
+```
+
+Score events and their labels:
+
+| Event | Points action |
+|---|---|
+| `day_complete` | Coder marked a plan day as complete |
+| `exercise_submit` | Coder submitted an exercise |
+| `tl_approved` | You reviewed and left feedback on a submission |
+| `plan_complete` | Coder finished all 20 days (bonus) |
+| `inactivity` | Deduction for days without activity |
+
+Coders with low or stagnant scores and no recent activity events are candidates for outreach.
+
+## Generating AI reports
+
+Kairo can generate a structured executive report for a Coder, your full clan, or the entire cohort. Each report includes:
+
+1. **Current state summary** — what the data shows right now
+2. **Main risks** — identified concerns based on scores, soft skills, and activity
+3. **Concrete recommendations** — 3 to 5 specific action items
+
+<Steps>
+  <Step title="Open the TL dashboard">
+    Navigate to `tl/dashboard.html` and select the report target — a specific Coder, the full clan, or the cohort.
+  </Step>
+  <Step title="Request the report">
+    ```bash
+    POST /api/ai/generate-report
+    ```
+
+    The Node.js gateway forwards the request to the Python AI microservice with your clan's aggregated data: total Coder count, average score, high-risk count, top struggling topics, and soft skills averages.
+  </Step>
+  <Step title="Review the generated report">
+    The LLM returns a JSON report that is saved to the `ai_reports` table with `viewed_by_tl = false`. The report is displayed inline in the dashboard view. Once read, `viewed_by_tl` is set to `true`.
+  </Step>
+</Steps>
+
+Reports are scoped by `target_type`: `coder`, `clan`, or `cohort`.
+
+## Managing resources
+
+### Uploading a PDF
+
+Upload learning materials for your Coders from `tl/profile.html` or directly via:
+
+```bash
+POST /api/tl/resource/upload
+```
+
+Files must be PDF format and no larger than **20 MB**. The file is stored and indexed with sentence embeddings so Coders can find it through semantic search in their resource library.
+
+### Listing resources
+
+```bash
+GET /api/tl/resource/list
+```
+
+Returns all resources uploaded by you.
+
+### Deleting a resource
+
+```bash
+DELETE /api/tl/resource/:resourceId
+```
+
+Deleting a resource removes it from the database and from the Coder-facing resource library.

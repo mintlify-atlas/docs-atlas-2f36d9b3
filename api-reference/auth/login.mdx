@@ -1,0 +1,112 @@
+---
+title: "Login"
+description: "Authenticate with email and password to start a session."
+---
+
+`POST /api/auth/login`
+
+Authenticates a user with their email and password. On success, the server establishes a session and sets the `riwi.sid` cookie in the response.
+
+**Auth required:** No
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  The email address used to register the account.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The account password in plain text. Compared against the stored bcrypt hash.
+</ParamField>
+
+## Example request
+
+```json
+{
+  "email": "alex@riwi.io",
+  "password": "mypassword123"
+}
+```
+
+## Responses
+
+<ResponseField name="success" type="boolean">
+  `true` on a successful login.
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  The authenticated user's profile.
+
+  <Expandable title="user properties">
+    <ResponseField name="id" type="number">
+      The user's numeric ID.
+    </ResponseField>
+    <ResponseField name="fullName" type="string">
+      The user's display name.
+    </ResponseField>
+    <ResponseField name="role" type="string">
+      The user's role: `"coder"` or `"tl"`.
+    </ResponseField>
+    <ResponseField name="clanId" type="string">
+      The user's clan (e.g. `"Turing"`). May be `null`.
+    </ResponseField>
+    <ResponseField name="firstLogin" type="boolean">
+      `true` if the user has not yet completed onboarding.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 200 — login successful
+
+The `riwi.sid` session cookie is set in the response.
+
+```json
+{
+  "success": true,
+  "user": {
+    "id": 42,
+    "fullName": "Alex Coder",
+    "role": "coder",
+    "clanId": "Turing",
+    "firstLogin": false
+  }
+}
+```
+
+### 401 — invalid credentials
+
+Returned when the email does not exist, the password is incorrect, or the account was created via OAuth (social auth users do not have a password).
+
+```json
+{
+  "error": "Invalid credentials."
+}
+```
+
+### 403 — account not verified
+
+Returned when the email has been registered but OTP verification has not been completed. The server automatically sends a new OTP to the email.
+
+```json
+{
+  "requiresOtp": true,
+  "error": "Please verify your email first.",
+  "email": "alex@riwi.io"
+}
+```
+
+## Session cookie
+
+On a successful `200` response, the server sets the `riwi.sid` cookie:
+
+| Property | Value |
+|---|---|
+| Name | `riwi.sid` |
+| `httpOnly` | `true` |
+| `secure` | `true` in production |
+| `sameSite` | `none` in production, `lax` in development |
+| `maxAge` | 24 hours |
+
+## Onboarding redirect
+
+If the response contains `user.firstLogin: true`, the frontend should redirect the coder to the onboarding flow before allowing access to the main dashboard. The `checkOnboarding` middleware on coder routes will enforce this server-side as well.

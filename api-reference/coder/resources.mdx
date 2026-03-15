@@ -1,0 +1,212 @@
+---
+title: "Resources"
+description: "Browse, download, and search PDF study resources shared by the coder's TL."
+---
+
+All routes in this group require an active session with `role = coder` and completed onboarding. Resources are scoped to the coder's clan — a coder can only access resources uploaded by their own TL.
+
+---
+
+## List resources
+
+**GET** `/api/coder/resources`
+
+Returns all active PDF resources available to the authenticated coder's clan, optionally filtered by module. Results are ordered by upload date, newest first.
+
+### Query parameters
+
+<ParamField query="moduleId" type="number">
+  Filter resources by module ID. If omitted, resources from all modules in the clan are returned.
+</ParamField>
+
+### Responses
+
+<ResponseField name="resources" type="object[]">
+  List of available resources.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Resource ID.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Resource title as set by the TL.
+    </ResponseField>
+    <ResponseField name="file_name" type="string">
+      Original filename of the uploaded PDF.
+    </ResponseField>
+    <ResponseField name="preview_text" type="string | null">
+      Extracted text preview from the PDF, used for search and display.
+    </ResponseField>
+    <ResponseField name="uploaded_at" type="string">
+      ISO 8601 timestamp of when the resource was uploaded.
+    </ResponseField>
+    <ResponseField name="module_id" type="number | null">
+      ID of the module this resource is associated with.
+    </ResponseField>
+    <ResponseField name="clan" type="string">
+      The clan this resource belongs to.
+    </ResponseField>
+    <ResponseField name="module_name" type="string | null">
+      Name of the associated module.
+    </ResponseField>
+    <ResponseField name="tl_name" type="string | null">
+      Display name of the TL who uploaded the resource.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "resources": [
+    {
+      "id": 8,
+      "title": "PostgreSQL indexing guide",
+      "file_name": "postgres-indexes.pdf",
+      "preview_text": "An index allows the database to find rows without scanning the full table...",
+      "uploaded_at": "2026-03-10T14:00:00.000Z",
+      "module_id": 4,
+      "clan": "Turing",
+      "module_name": "Backend Node.js",
+      "tl_name": "Maria TL"
+    }
+  ]
+}
+```
+
+---
+
+## Get download URL
+
+**GET** `/api/coder/resource/:id/download`
+
+Generates a signed, time-limited download URL for a specific resource. The URL is valid for **1 hour**. The resource must belong to the coder's clan.
+
+### Path parameters
+
+<ParamField path="id" type="number" required>
+  The ID of the resource to download.
+</ParamField>
+
+### Responses
+
+<ResponseField name="url" type="string">
+  A signed URL granting temporary access to the PDF file in Supabase Storage.
+</ResponseField>
+
+<ResponseField name="fileName" type="string">
+  The original filename of the resource, suitable for use as the download filename.
+</ResponseField>
+
+### 200 — success
+
+```json
+{
+  "url": "https://your-project.supabase.co/storage/v1/object/sign/activity-resources/Turing/module-4/1710000000000_postgres-indexes.pdf?token=...",
+  "fileName": "postgres-indexes.pdf"
+}
+```
+
+### 404 — resource not found
+
+Returned when the resource does not exist, has been deleted, or belongs to a different clan.
+
+```json
+{
+  "error": "Recurso no encontrado o no autorizado."
+}
+```
+
+---
+
+## Search resources
+
+**POST** `/api/coder/resources/search`
+
+Performs a semantic search over the clan's resources using sentence embeddings (`all-MiniLM-L6-v2` via the Python RAG service). Results are ranked by similarity to the query. Falls back to PostgreSQL full-text search if the Python service is unavailable, and then to a module-filtered recency sort as a last resort.
+
+### Request body
+
+<ParamField body="topic" type="string" required>
+  The search query or topic to find relevant resources for (e.g. `"database indexing"`, `"REST API design"`).
+</ParamField>
+
+<ParamField body="moduleId" type="number">
+  Optional module ID to narrow the search to a specific module.
+</ParamField>
+
+<ParamField body="limit" type="number" default="3">
+  Maximum number of results to return.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "topic": "SQL JOIN optimization",
+  "moduleId": 4,
+  "limit": 3
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  Always `true`, even when no results are found.
+</ResponseField>
+
+<ResponseField name="resources" type="object[]">
+  Ranked list of matching resources, ordered by similarity score descending.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Resource ID.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Resource title.
+    </ResponseField>
+    <ResponseField name="file_name" type="string">
+      Original filename.
+    </ResponseField>
+    <ResponseField name="preview_text" type="string | null">
+      Text preview from the PDF.
+    </ResponseField>
+    <ResponseField name="storage_path" type="string">
+      Internal Supabase Storage path.
+    </ResponseField>
+    <ResponseField name="module_id" type="number | null">
+      Module ID.
+    </ResponseField>
+    <ResponseField name="uploaded_at" type="string">
+      ISO 8601 upload timestamp.
+    </ResponseField>
+    <ResponseField name="similarity" type="number">
+      Similarity score between 0 and 1. Higher is more relevant. Fallback results use `0.8` (text match) or `0.5` (module fallback).
+    </ResponseField>
+    <ResponseField name="download_url" type="string | null">
+      A signed 1-hour download URL. `null` if URL generation failed.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "success": true,
+  "resources": [
+    {
+      "id": 8,
+      "title": "PostgreSQL indexing guide",
+      "file_name": "postgres-indexes.pdf",
+      "preview_text": "An index allows the database to find rows without scanning the full table...",
+      "storage_path": "Turing/module-4/1710000000000_postgres-indexes.pdf",
+      "module_id": 4,
+      "uploaded_at": "2026-03-10T14:00:00.000Z",
+      "similarity": 0.91,
+      "download_url": "https://your-project.supabase.co/storage/v1/object/sign/activity-resources/..."
+    }
+  ]
+}
+```

@@ -1,0 +1,239 @@
+---
+title: "AI exercises"
+description: "Generate coding and conceptual exercises for a specific learning plan activity, and submit answers for TL review."
+---
+
+This group covers two endpoints for the exercise workflow:
+
+1. **Generate** — create (or retrieve from cache) an exercise for a specific plan day.
+2. **Submit** — save a coder's code submission for TL review.
+
+Both endpoints are served directly by the Python AI microservice. The Node.js gateway also exposes them at the paths shown below.
+
+| Endpoint | Python (direct) | Node.js proxy |
+|----------|-----------------|---------------|
+| Generate | `POST http://localhost:8000/generate-exercise` | `POST /api/coder/exercise/generate` |
+| Submit | `POST http://localhost:8000/exercise/{id}/submit` | `POST /api/coder/exercise/:exerciseId/submit` |
+
+---
+
+## Generate an exercise
+
+**POST** `/generate-exercise`
+
+Generates a personalized coding exercise for a specific day in a learning plan. Exercises are cached per `(plan_id, day_number)` pair — calling this endpoint again for the same plan day returns the cached exercise without regenerating it.
+
+The exercise language is auto-detected from `module_name` if `language` is not provided. Supported auto-detected languages: `sql`, `python`, `javascript`, `html`.
+
+<Tip>
+  Because exercises are cached, it is safe to call this endpoint every time a coder opens a plan day. If an exercise already exists, it is returned immediately without calling the LLM.
+</Tip>
+
+### Request body
+
+<ParamField body="coder_id" type="integer" required>
+  The coder's ID. Used to fetch their soft skills profile for personalization.
+</ParamField>
+
+<ParamField body="plan_id" type="integer" required>
+  The ID of the learning plan this exercise belongs to.
+</ParamField>
+
+<ParamField body="day_number" type="integer" required>
+  The day within the plan (e.g., `1`, `5`, `14`). Combined with `plan_id` as the cache key.
+</ParamField>
+
+<ParamField body="week_number" type="integer" required>
+  The week within the plan (e.g., `1`, `2`, `3`, `4`). Used in the exercise prompt for context.
+</ParamField>
+
+<ParamField body="topic" type="string" required>
+  The topic name the exercise should cover (e.g., `"INNER JOIN"`).
+</ParamField>
+
+<ParamField body="description" type="string">
+  Additional context about the activity from the plan. Passed to the LLM to improve exercise quality. Defaults to an empty string.
+</ParamField>
+
+<ParamField body="difficulty" type="string">
+  Exercise difficulty level: `"beginner"`, `"intermediate"`, or `"advanced"`. Defaults to `"intermediate"`.
+</ParamField>
+
+<ParamField body="module_name" type="string">
+  The name of the module (e.g., `"Bases de Datos"`). Used for language auto-detection and prompt context. Defaults to `"Bases de Datos"`.
+</ParamField>
+
+<ParamField body="language" type="string">
+  Override the programming language (e.g., `"sql"`, `"python"`, `"javascript"`, `"html"`). If omitted, the language is inferred from `module_name`.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "coder_id": 42,
+  "plan_id": 101,
+  "day_number": 3,
+  "week_number": 1,
+  "topic": "INNER JOIN",
+  "description": "Practice joining two related tables",
+  "difficulty": "intermediate",
+  "module_name": "Bases de Datos"
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when an exercise was returned (generated or cached). `false` when a fallback exercise was used due to a generation error.
+</ResponseField>
+
+<ResponseField name="cached" type="boolean">
+  `true` when the exercise was retrieved from cache. `false` when it was freshly generated.
+</ResponseField>
+
+<ResponseField name="exercise" type="object">
+  The exercise object.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="integer">
+      The database ID of the exercise. Present on freshly generated exercises. May be absent on cache hits depending on the response path.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      The exercise title.
+    </ResponseField>
+    <ResponseField name="description" type="string">
+      What the coder needs to accomplish.
+    </ResponseField>
+    <ResponseField name="language" type="string">
+      The programming language: `"sql"`, `"python"`, `"javascript"`, or `"html"`.
+    </ResponseField>
+    <ResponseField name="difficulty" type="string">
+      Difficulty level: `"beginner"`, `"intermediate"`, or `"advanced"`.
+    </ResponseField>
+    <ResponseField name="topic" type="string">
+      The topic this exercise covers.
+    </ResponseField>
+    <ResponseField name="starter_code" type="string">
+      Boilerplate code the coder starts from.
+    </ResponseField>
+    <ResponseField name="solution" type="string">
+      The reference solution. Not shown to coders in the UI.
+    </ResponseField>
+    <ResponseField name="expected_output" type="string">
+      The expected output or result when the solution is run.
+    </ResponseField>
+    <ResponseField name="hints" type="string[]">
+      Hints to help the coder if they get stuck.
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      `"ok"` for a fully generated exercise, `"fallback"` if the LLM was unavailable.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 200 — exercise generated
+
+```json
+{
+  "success": true,
+  "cached": false,
+  "exercise": {
+    "id": 55,
+    "title": "Join customers and orders",
+    "description": "Write a query that returns each customer's name alongside their order total. Include only customers who have placed at least one order.",
+    "language": "sql",
+    "difficulty": "intermediate",
+    "topic": "INNER JOIN",
+    "starter_code": "-- Write your query here\nSELECT \n",
+    "solution": "SELECT c.name, o.total\nFROM customers c\nINNER JOIN orders o ON c.id = o.customer_id;",
+    "expected_output": "A result set with columns: name, total",
+    "hints": [
+      "Think about which column links the two tables.",
+      "INNER JOIN only returns rows with a match in both tables."
+    ],
+    "status": "ok"
+  }
+}
+```
+
+---
+
+## Submit an answer
+
+**POST** `/exercise/{exercise_id}/submit`
+
+Saves a coder's code submission for a given exercise. Submissions are stored in `exercise_submissions` and are visible to the TL for manual review. There is no automated grading — feedback is provided by the TL.
+
+### Path parameters
+
+<ParamField path="exercise_id" type="integer" required>
+  The ID of the exercise being submitted.
+</ParamField>
+
+### Request body
+
+<ParamField body="coder_id" type="integer" required>
+  The ID of the coder submitting the answer.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The coder's submitted code. Cannot be empty or whitespace-only.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "coder_id": 42,
+  "code": "SELECT c.name, o.total\nFROM customers c\nINNER JOIN orders o ON c.id = o.customer_id;"
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the submission was saved successfully.
+</ResponseField>
+
+<ResponseField name="submission_id" type="integer">
+  The ID of the newly created submission record.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message: `"¡Solución enviada! Tu TL podrá revisar tu código."`
+</ResponseField>
+
+### 200 — submission saved
+
+```json
+{
+  "success": true,
+  "submission_id": 204,
+  "message": "¡Solución enviada! Tu TL podrá revisar tu código."
+}
+```
+
+### 400 — missing coder_id
+
+```json
+{
+  "detail": "coder_id es requerido."
+}
+```
+
+### 400 — empty code
+
+```json
+{
+  "detail": "El campo code no puede estar vacío."
+}
+```
+
+### 500 — save failed
+
+```json
+{
+  "detail": "No se pudo guardar la solución."
+}
+```

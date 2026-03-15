@@ -1,0 +1,159 @@
+---
+title: "Team Leader dashboard"
+description: "Real-time analytics for Team Leaders to monitor cohort performance and proactively identify at-risk Coders."
+---
+
+The Team Leader (TL) dashboard gives instructors a live view of their entire clan. It surfaces Coder progress, soft skills averages, risk flags, and evidence submissions in one place — so TLs can act before a Coder falls critically behind.
+
+## Dashboard overview
+
+<CardGroup cols={2}>
+  <Card title="Coder list" icon="users">
+    All Coders in the TL's clan with their current Moodle score, active week, and unresolved risk level. Sorted by risk severity (critical → high → medium → no flag).
+  </Card>
+  <Card title="Cohort metrics" icon="chart-bar">
+    Clan-wide averages: overall Kairo score, soft skills breakdown, onboarding completion rate, and count of high-risk Coders.
+  </Card>
+  <Card title="Risk flags" icon="triangle-alert">
+    Auto-detected risk alerts from the `risk_flags` table. Each flag includes a risk level, a human-readable reason, and a detection timestamp.
+  </Card>
+  <Card title="Submission review" icon="file-check">
+    Exercise submissions from all Coders in the clan, ordered by most recent. TLs can read submitted code, compare it to the expected output, and leave written feedback.
+  </Card>
+  <Card title="Score ranking" icon="trophy">
+    Clan-level and global leaderboards ranked by Kairo score. TLs use this to identify high performers and those who have not engaged with the platform.
+  </Card>
+  <Card title="AI reports" icon="brain">
+    On-demand AI-generated executive reports summarizing current state, risks, and concrete action items for the clan.
+  </Card>
+</CardGroup>
+
+The dashboard is served from `frontend/src/views/tl/dashboard.html` and is populated by `GET /api/tl/dashboard`.
+
+## Risk detection
+
+Kairo automatically flags Coders who meet specific risk conditions. Risk levels are defined by the `risk_level_enum` type: `low`, `medium`, or `high`.
+
+The logic is encoded in the `v_coder_risk_analysis` database view:
+
+```sql
+CASE
+  WHEN ssa.autonomy <= 2 AND mp.average_score < 70 THEN 'high'
+  WHEN ssa.autonomy <= 2 OR  mp.average_score < 70 THEN 'medium'
+  ELSE 'low'
+END AS calculated_risk_level
+```
+
+### Risk level conditions
+
+| Risk level | Trigger condition | Interpretation |
+|---|---|---|
+| `high` | `autonomy ≤ 2` **and** `average_score < 70` | Both low self-direction and poor academic performance |
+| `medium` | `autonomy ≤ 2` **or** `average_score < 70` | One risk factor present — early intervention recommended |
+| `low` | Neither condition | Coder is on track |
+
+Risk flags written to the `risk_flags` table have an `auto_detected` boolean field. Flags set by the system have `auto_detected = true`; TLs can also manually create flags. A flag remains active until `resolved = true` is set.
+
+## Score ranking
+
+The ranking endpoint returns two leaderboards:
+
+```
+GET /api/tl/ranking
+```
+
+- **Clan ranking** — all active Coders in the TL's clan, ordered by `kairo_score` descending with dense rank
+- **Global ranking** — top 10 Coders across all clans
+
+```json
+{
+  "clan": "Turing",
+  "clanRanking": [
+    { "id": 12, "full_name": "Ana García", "kairo_score": 380, "rank": 1 },
+    { "id": 7,  "full_name": "Luis Mora",  "kairo_score": 310, "rank": 2 }
+  ],
+  "globalRanking": [ ... ]
+}
+```
+
+## Score history
+
+TLs can drill into a specific Coder's point history:
+
+```
+GET /api/tl/coder/:id/score
+```
+
+This returns the last 20 score events with event labels:
+
+| Event type | Label |
+|---|---|
+| `day_complete` | Día completado |
+| `exercise_submit` | Ejercicio enviado |
+| `tl_approved` | TL aprobó solución |
+| `plan_complete` | Plan completado (bonus) |
+| `inactivity` | Días sin actividad |
+
+## Feedback system
+
+TLs send feedback to Coders using:
+
+```
+POST /api/tl/feedback
+```
+
+```json
+{
+  "coderId": 42,
+  "feedbackText": "Great progress this week. Focus more on your JOIN queries.",
+  "feedbackType": "weekly"
+}
+```
+
+Valid `feedbackType` values are `weekly`, `activity`, and `general`. Each submitted feedback record is stored in `tl_feedback` with `is_read = false`, which triggers a notification dot on the Coder's bell icon. See [Notifications](/features/notifications) for the full notification flow.
+
+When the TL reviews an exercise submission (`POST /api/tl/submissions/:id/review`), the Coder also receives a real-time notification and earns Kairo score points for the reviewed work.
+
+## Submission review
+
+The TL can see all exercise submissions from their clan's Coders:
+
+```
+GET /api/tl/submissions
+```
+
+Each row includes the submitted code, the exercise title, language, difficulty, the expected solution, and the Coder's name. To leave feedback on a submission:
+
+```
+POST /api/tl/submissions/:id/review
+```
+
+```json
+{
+  "feedbackText": "Your query is correct but consider using an index on coder_id."
+}
+```
+
+The review is restricted to submissions from Coders in the TL's own clan. Attempts to review submissions from other clans return HTTP 404.
+
+## AI report generation
+
+TLs can generate a structured executive report for their clan:
+
+```
+POST /api/ai/generate-report
+```
+
+The Node.js gateway forwards this to the Python microservice, which calls Groq's LLM with a prompt that includes total Coder count, average score, high-risk count, top struggling topics, and soft skills averages. The LLM returns a JSON report with three sections: **current state summary**, **main risks**, and **concrete recommendations** (3–5 action items).
+
+The report is saved to the `ai_reports` table with `viewed_by_tl = false` and returned in the response.
+
+## Resource management
+
+TLs upload PDF learning resources for their Coders:
+
+```
+POST /api/tl/resource/upload
+```
+
+Uploads are limited to PDF files and capped at 20 MB. Once uploaded, resources appear in the Coder's resource library and are indexed for semantic search via sentence embeddings. TLs can list and delete their uploaded resources with `GET /api/tl/resource/list` and `DELETE /api/tl/resource/:resourceId`.

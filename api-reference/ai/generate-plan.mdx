@@ -1,0 +1,205 @@
+---
+title: "Generate learning plan"
+description: "Generate a personalized 4-week learning plan for a Coder using AI analysis of soft skills and academic data."
+---
+
+This endpoint generates a personalized 4-week learning plan for a Coder. The plan is tailored using the coder's soft skills assessment and, when using the `analytical` plan type, their academic performance data from Moodle.
+
+The endpoint is available at two paths:
+
+| Path | Auth required | Role |
+|------|--------------|------|
+| `POST http://localhost:8000/generate-plan` | No | — |
+| `POST http://localhost:3000/api/ai/generate-plan` | Yes (session cookie) | `coder` |
+
+Calling through the Node.js proxy is the standard path for frontend clients. The Node gateway resolves the coder's `module_id` and `struggling_topics` from their Moodle progress record before forwarding the request to the Python service.
+
+<Note>
+  A completed soft skills assessment is required before generating a plan. If no diagnostic record exists for the coder, the endpoint returns a `400` error: `"No diagnostic found for coder {id}. Complete onboarding first."`
+</Note>
+
+---
+
+## Plan types
+
+The `plan_type` field controls how the plan is constructed.
+
+- **`interpretive`** — uses only soft skills data. Suitable for new coders with no academic history yet.
+- **`analytical`** — uses soft skills **plus** academic data (`average_score`, `struggling_topics`, `weeks_completed`). When `average_score` is `0.0` and `weeks_completed` is empty, the service automatically fetches the latest Moodle progress from the database.
+
+---
+
+## Request body
+
+<ParamField body="coder_id" type="integer" required>
+  The ID of the coder for whom the plan is being generated.
+</ParamField>
+
+<ParamField body="module_id" type="integer" required>
+  The ID of the module the plan should cover.
+</ParamField>
+
+<ParamField body="plan_type" type="string">
+  Plan generation mode. One of `"interpretive"` or `"analytical"`. Defaults to `"interpretive"`.
+</ParamField>
+
+<ParamField body="current_week" type="integer">
+  The week the coder is currently on (1–4). Defaults to `1`.
+</ParamField>
+
+<ParamField body="average_score" type="float">
+  The coder's current average score out of 100. Defaults to `0.0`. For `analytical` plans, if this is `0.0` and `weeks_completed` is empty, the service auto-fetches the value from Moodle progress.
+</ParamField>
+
+<ParamField body="struggling_topics" type="string[]">
+  A list of topic names the coder is struggling with. Defaults to an empty array. Used to prioritize plan activities.
+</ParamField>
+
+<ParamField body="weeks_completed" type="object[]">
+  An array of completed week objects from Moodle progress. Defaults to an empty array. Used only for `analytical` plans.
+</ParamField>
+
+---
+
+## Example requests
+
+<CodeGroup>
+
+```json Interpretive plan
+{
+  "coder_id": 42,
+  "module_id": 3,
+  "plan_type": "interpretive",
+  "current_week": 1
+}
+```
+
+```json Analytical plan
+{
+  "coder_id": 42,
+  "module_id": 3,
+  "plan_type": "analytical",
+  "current_week": 2,
+  "average_score": 65.5,
+  "struggling_topics": ["JOINs", "Subqueries"],
+  "weeks_completed": [
+    { "week": 1, "score": 72, "completed": true }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the plan was generated and saved successfully.
+</ResponseField>
+
+<ResponseField name="plan_id" type="integer">
+  The ID of the newly created plan record. `null` if the database insert failed (non-blocking).
+</ResponseField>
+
+<ResponseField name="plan" type="object">
+  The generated learning plan returned by the LLM. Contains weeks, daily activities, and cards.
+
+  <Expandable title="properties">
+    <ResponseField name="targeted_soft_skill" type="string">
+      The soft skill the plan is designed to strengthen (e.g., `"autonomy"`).
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      `"ok"` for a fully generated plan, `"fallback"` if the LLM returned a degraded response.
+    </ResponseField>
+    <ResponseField name="weeks" type="object[]">
+      Array of 4 week objects, each containing daily activities and learning goals.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Contextual information about the generation run.
+
+  <Expandable title="properties">
+    <ResponseField name="plan_type" type="string">
+      The plan type used: `"interpretive"` or `"analytical"`.
+    </ResponseField>
+    <ResponseField name="coder_id" type="integer">
+      The coder this plan was generated for.
+    </ResponseField>
+    <ResponseField name="module_id" type="integer">
+      The module this plan covers.
+    </ResponseField>
+    <ResponseField name="module_name" type="string">
+      The human-readable name of the module.
+    </ResponseField>
+    <ResponseField name="current_week" type="integer">
+      The starting week used for plan generation.
+    </ResponseField>
+    <ResponseField name="execution_ms" type="integer">
+      Total time taken to generate and save the plan, in milliseconds.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## 200 — plan generated
+
+```json
+{
+  "success": true,
+  "plan_id": 101,
+  "plan": {
+    "targeted_soft_skill": "autonomy",
+    "status": "ok",
+    "weeks": [
+      {
+        "week": 2,
+        "goal": "Master SQL JOINs and relationships",
+        "days": [
+          {
+            "day": 1,
+            "topic": "INNER JOIN",
+            "activity": "Practice joining two tables with real data",
+            "duration_min": 45
+          }
+        ]
+      }
+    ]
+  },
+  "metadata": {
+    "plan_type": "analytical",
+    "coder_id": 42,
+    "module_id": 3,
+    "module_name": "Bases de Datos",
+    "current_week": 2,
+    "execution_ms": 3241
+  }
+}
+```
+
+## 400 — missing soft skills diagnostic
+
+```json
+{
+  "detail": "No diagnostic found for coder 42. Complete onboarding first."
+}
+```
+
+## 400 — invalid plan_type
+
+```json
+{
+  "detail": "plan_type must be 'interpretive' or 'analytical', got 'custom'"
+}
+```
+
+## 404 — module not found
+
+```json
+{
+  "detail": "Module 99 not found."
+}
+```

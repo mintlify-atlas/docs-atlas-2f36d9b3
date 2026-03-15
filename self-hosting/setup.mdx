@@ -1,0 +1,288 @@
+---
+title: "Setup"
+description: "Deploy Kairo's three-service stack — Node.js gateway, Python AI microservice, and Supabase database."
+---
+
+Kairo runs as three independent services that must all be active simultaneously. The Node.js gateway handles authentication, business logic, and API routing. The Python microservice owns all AI inference and plan generation. Supabase (or a self-hosted PostgreSQL instance) stores all persistent data.
+
+## Prerequisites
+
+Before you start, install the following on your host machine:
+
+- **Node.js 18+** — [nodejs.org](https://nodejs.org)
+- **Python 3.11+** — [python.org](https://python.org)
+- **A Supabase project** (or PostgreSQL 14+) — [supabase.com](https://supabase.com)
+- **A Groq API key** — [console.groq.com](https://console.groq.com)
+
+## Repository structure
+
+The repository is split into three independently deployable directories:
+
+```
+Learning-Platform/
+├── backend-node/     # Node.js API gateway (Express 5, port 3000)
+├── backend-python/   # Python AI microservice (FastAPI, port 8000)
+└── frontend/         # Vanilla JS multi-page app (static, port 5500)
+```
+
+Each directory contains its own dependencies and `.env` file. The `database/` directory holds SQL schemas, migrations, and seed data.
+
+## Setting up Supabase
+
+<Steps>
+  <Step title="Create a Supabase project">
+    Log in to [supabase.com](https://supabase.com) and create a new project. Once the project is provisioned, note the following values from **Project Settings → API** and **Project Settings → Database**:
+
+    - **Project URL** — used as `SUPABASE_URL`
+    - **Anon key** — used as `SUPABASE_ANON_KEY`
+    - **Service role key** — used as `SUPABASE_SERVICE_KEY` in the Python service
+    - **Database connection string** — used as `DATABASE_URL` in the Node.js service
+  </Step>
+
+  <Step title="Run the schema">
+    In the Supabase dashboard, open **SQL Editor** and paste the full contents of `database/schema.sql`. Run the script. This creates all 14 tables, 8 enum types, and 2 views.
+
+    If you prefer the command line:
+
+    ```bash
+    psql "$DATABASE_URL" -f database/schema.sql
+    ```
+
+    <Note>
+      The `session` table used by the Node.js session store is **not** in `schema.sql`. It is created automatically on first startup via `connect-pg-simple` with `createTableIfMissing: true`.
+    </Note>
+  </Step>
+
+  <Step title="Apply the latest migrations">
+    Run the migration files in order to bring the schema up to date:
+
+    ```bash
+    psql "$DATABASE_URL" -f database/migrations/001_add_clans_and_priority_and_notifications.sql
+    psql "$DATABASE_URL" -f database/migrations/002_add_raw_answers_to_soft_skills.sql
+    psql "$DATABASE_URL" -f database/migrations/005_create_user_profiles.sql
+    ```
+  </Step>
+
+  <Step title="Enable Row Level Security">
+    Run `database/rls_policies.sql` to activate RLS and create access policies. This controls which data each role (`coder`, `tl`) can read or modify.
+
+    ```bash
+    psql "$DATABASE_URL" -f database/rls_policies.sql
+    ```
+  </Step>
+</Steps>
+
+## Node.js backend setup
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    cd backend-node
+    npm install
+    ```
+  </Step>
+
+  <Step title="Create the .env file">
+    Create `backend-node/.env` with the following content. See [Environment variables](/self-hosting/environment-variables) for a full description of each key.
+
+    ```env
+    # SERVER CONFIGURATION
+    PORT=3000
+    NODE_ENV=development
+
+    # SECURITY & SESSIONS
+    SESSION_SECRET=your_session_secret
+
+    # DATABASE (POSTGRESQL - SUPABASE)
+    DB_HOST=your_host
+    DB_PORT=5432
+    DB_NAME=your_name
+    DB_USER=postgres.your_user
+    DB_PASSWORD=your_password
+    DATABASE_URL=your_database_url
+
+    # SUPABASE CONFIG
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_ANON_KEY=your_anon_key
+
+    # FRONTEND CONNECTION
+    FRONTEND_URL=http://127.0.0.1:5500/frontend
+
+    # PYTHON CONNECTION
+    PYTHON_API_URL=http://localhost:8000
+
+    # SOCIAL AUTH - GITHUB
+    GITHUB_CLIENT_ID=your_client_id
+    GITHUB_CLIENT_SECRET=your_client_secret
+
+    # SOCIAL AUTH - GOOGLE
+    GOOGLE_CLIENT_ID=your_client_id
+    GOOGLE_CLIENT_SECRET=your_client_secret
+
+    # AUTHENTICATION SMTP
+    SMTP_HOST=smtp.gmail.com
+    SMTP_PORT=465
+    SMTP_SECURE=true
+    SMTP_USER=your_email
+    SMTP_PASS=your_app_password
+    SMTP_FROM="Kairo <your_email>"
+
+    # API KEY AI
+    RIWI_IA_KEY=your_ia_key
+    ```
+
+    <Warning>
+      `FRONTEND_URL` must exactly match the origin where your frontend is deployed — including the scheme and port, but without a trailing slash. In development this is typically `http://127.0.0.1:5500/frontend`. In production it must match your live origin exactly (e.g., `https://yoursite.github.io`). A mismatch blocks all browser requests with a CORS error.
+    </Warning>
+  </Step>
+
+  <Step title="Start the server">
+    For development (with auto-reload via nodemon):
+
+    ```bash
+    npm run dev
+    ```
+
+    For production:
+
+    ```bash
+    npm start
+    ```
+
+    A successful startup prints:
+
+    ```
+    ------------------------------------------------------------
+    🚀 KAIRO API GATEWAY STARTED SUCCESSFULLY
+    ------------------------------------------------------------
+    📡 URL      : http://localhost:3000
+    🌐 Origins  : http://localhost:5500
+    🛠️  ENV      : development
+    ------------------------------------------------------------
+    ```
+  </Step>
+</Steps>
+
+## Python backend setup
+
+<Steps>
+  <Step title="Create and activate a virtual environment">
+    <CodeGroup>
+
+    ```bash Linux / macOS
+    cd backend-python
+    python3 -m venv env
+    source env/bin/activate
+    ```
+
+    ```powershell Windows
+    cd backend-python
+    python -m venv env
+    env\Scripts\Activate.ps1
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Install dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    Key packages installed: `fastapi`, `uvicorn`, `groq`, `supabase`, `langchain`, `sentence-transformers` (for the `all-MiniLM-L6-v2` embedding model used in resource search).
+  </Step>
+
+  <Step title="Create the .env file">
+    Create `backend-python/.env`:
+
+    ```env
+    # PYTHON CONFIGURATION
+    PORT=8000
+    ENV=development
+
+    # OPENAI-COMPATIBLE API (Groq)
+    OPENAI_API_KEY=your_groq_api_key
+
+    # MODEL IA
+    MODEL_NAME=llama-3.3-70b-versatile
+
+    # SUPABASE CONFIG
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_SERVICE_KEY=your_service_key
+
+    # BACKEND NODE PORT
+    NODE_URL=http://localhost:3000
+
+    # FRONTEND PORT
+    FRONTEND_URL=http://localhost:5500
+    ```
+
+    <Note>
+      `OPENAI_API_KEY` is your Groq API key. The Python service uses the OpenAI-compatible SDK with a Groq base URL. The variable name is kept for legacy compatibility. See [Environment variables](/self-hosting/environment-variables) for details.
+    </Note>
+  </Step>
+
+  <Step title="Start the server">
+    ```bash
+    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    ```
+
+    On startup you should see:
+
+    ```
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      Kairo AI Service v2.3.0  |  starting up
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      LLM model    : llama-3.3-70b-versatile
+      Embeddings   : ✓ all-MiniLM-L6-v2 (384d)
+      Environment  : development
+      CORS origins : ['http://localhost:3000', 'http://localhost:5500', ...]
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+    ```
+  </Step>
+</Steps>
+
+## Frontend
+
+The frontend is a static multi-page application — no build step is required. Serve it from port 5500 using one of the following methods:
+
+<CodeGroup>
+
+```bash VS Code Live Server
+# Right-click any HTML file inside frontend/
+# and select "Open with Live Server".
+# The extension starts the server at http://127.0.0.1:5500 by default.
+```
+
+```bash npx serve
+npx serve frontend -p 5500
+```
+
+</CodeGroup>
+
+<Warning>
+  Do not open HTML files directly from the filesystem (`file://` URLs). Browsers will not send session cookies with `file://` requests, which means every authenticated API call will fail silently.
+</Warning>
+
+## Production deployment notes
+
+When deploying to a production environment, apply the following settings:
+
+- Set `NODE_ENV=production` in `backend-node/.env`. This enables secure, `SameSite=none` cookies, tightens CORS to only the origins in `FRONTEND_URL`, and suppresses detailed error messages in API responses.
+- Set `ENV=production` in `backend-python/.env`.
+- `FRONTEND_URL` in both `.env` files must match the **exact origin** of your deployed frontend. The Node.js gateway derives the allowed CORS origin by parsing `new URL(FRONTEND_URL).origin`, so `https://example.com` and `https://example.com/` are treated differently.
+- Provide a strong, unique `SESSION_SECRET` (minimum 32 random characters). The development fallback value `dev_secret_fallback` must never be used in production.
+- For Railway deployments, the Python service uses `nixpacks.toml` to configure Python 3.11 and run `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+
+## Health checks
+
+Once all three services are running, verify each one:
+
+| Endpoint | Service | Expected response |
+|---|---|---|
+| `GET http://localhost:3000/api/health` | Node.js gateway | `{ "status": "active", "database": { "connected": true } }` |
+| `GET http://localhost:8000/health` | Python AI microservice | `{ "status": "online", "service": "Kairo AI Engine", "version": "2.3.0" }` |
+| `GET http://localhost:8000/` | Python root | `{ "message": "Kairo AI Microservice — online" }` |
+
+The `/api/health` endpoint on the Node.js service also returns the database timestamp from a live `SELECT NOW()` query, so a `connected: true` response confirms the PostgreSQL connection is working end-to-end.

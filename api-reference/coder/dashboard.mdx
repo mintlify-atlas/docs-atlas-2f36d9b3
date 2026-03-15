@@ -1,0 +1,363 @@
+---
+title: "Coder dashboard"
+description: "Retrieve dashboard data, module milestones, and manage feedback notifications for the authenticated coder."
+---
+
+All routes in this group require an active session with `role = coder` and completed onboarding. If onboarding has not been finished (`first_login = true`), requests return `403 Onboarding Required`.
+
+See [Authentication](/api-reference/authentication) for details on session setup and the onboarding gate.
+
+---
+
+## Get dashboard data
+
+**GET** `/api/coder/dashboard`
+
+Returns a complete snapshot of the coder's current state: profile, soft skills assessment, Moodle progress, active learning plan, feedback notifications, risk flags, and recent performance tests. Intended as a single call to hydrate the dashboard on page load.
+
+### Responses
+
+<ResponseField name="user" type="object">
+  The authenticated coder's profile and module info.
+
+  <Expandable title="properties">
+    <ResponseField name="fullName" type="string">
+      The coder's display name.
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      The coder's email address.
+    </ResponseField>
+    <ResponseField name="clanId" type="string">
+      The clan the coder belongs to (e.g. `"Turing"`).
+    </ResponseField>
+    <ResponseField name="role" type="string">
+      Always `"coder"` for this endpoint.
+    </ResponseField>
+    <ResponseField name="kairoScore" type="number">
+      The coder's current Kairo score. Defaults to `50` if not yet set.
+    </ResponseField>
+    <ResponseField name="moduleId" type="number">
+      ID of the coder's current module.
+    </ResponseField>
+    <ResponseField name="moduleName" type="string">
+      Name of the current module (e.g. `"Backend Node.js"`).
+    </ResponseField>
+    <ResponseField name="moduleTotalWeeks" type="number">
+      Total number of weeks in the current module.
+    </ResponseField>
+    <ResponseField name="isModuleCritical" type="boolean">
+      Whether the current module is marked as critical.
+    </ResponseField>
+    <ResponseField name="learningStyleCache" type="string">
+      Cached learning style from the soft skills assessment (`"visual"`, `"auditory"`, `"kinesthetic"`, or `"mixed"`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="softSkills" type="object | null">
+  Soft skills assessment scores. `null` if the assessment has not been completed.
+
+  <Expandable title="properties">
+    <ResponseField name="autonomy" type="number">
+      Autonomy score from 1 to 5.
+    </ResponseField>
+    <ResponseField name="timeManagement" type="number">
+      Time management score from 1 to 5.
+    </ResponseField>
+    <ResponseField name="problemSolving" type="number">
+      Problem solving score from 1 to 5.
+    </ResponseField>
+    <ResponseField name="communication" type="number">
+      Communication score from 1 to 5.
+    </ResponseField>
+    <ResponseField name="teamwork" type="number">
+      Teamwork score from 1 to 5.
+    </ResponseField>
+    <ResponseField name="learningStyle" type="string">
+      Learning style: `"visual"`, `"auditory"`, `"kinesthetic"`, or `"mixed"`.
+    </ResponseField>
+    <ResponseField name="assessedAt" type="string">
+      ISO 8601 timestamp of when the assessment was completed.
+    </ResponseField>
+    <ResponseField name="average" type="number | null">
+      Average of all five skill scores, rounded to two decimal places. `null` if no scores are recorded.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="progress" type="object">
+  The coder's latest Moodle progress. If no progress row exists yet, defaults are returned.
+
+  <Expandable title="properties">
+    <ResponseField name="currentWeek" type="number">
+      Current week number within the module. Defaults to `1`.
+    </ResponseField>
+    <ResponseField name="averageScore" type="number | null">
+      Average Moodle score as a decimal. `null` means no data has been recorded yet (distinct from a real score of `0`).
+    </ResponseField>
+    <ResponseField name="strugglingTopics" type="string[]">
+      List of topic names the coder is currently struggling with.
+    </ResponseField>
+    <ResponseField name="weeksCompleted" type="array">
+      JSONB array of completed week records.
+    </ResponseField>
+    <ResponseField name="weeksCompletedCount" type="number">
+      Number of completed weeks derived from `weeksCompleted`.
+    </ResponseField>
+    <ResponseField name="updatedAt" type="string | null">
+      ISO 8601 timestamp of the last progress update.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="activePlan" type="object | null">
+  Summary of the coder's current active learning plan. `null` if no active plan exists.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Plan ID.
+    </ResponseField>
+    <ResponseField name="targetedSoftSkill" type="string">
+      The soft skill this plan focuses on improving.
+    </ResponseField>
+    <ResponseField name="planType" type="string">
+      Plan type: `"interpretive"` or `"analytical"`.
+    </ResponseField>
+    <ResponseField name="generatedAt" type="string">
+      ISO 8601 timestamp of when the plan was generated.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="notifications" type="object">
+  Feedback notifications from the coder's TL.
+
+  <Expandable title="properties">
+    <ResponseField name="unread" type="number">
+      Count of unread feedback notifications.
+    </ResponseField>
+    <ResponseField name="items" type="object[]">
+      The five most recent feedback messages.
+
+      <Expandable title="item properties">
+        <ResponseField name="id" type="number">
+          Feedback record ID.
+        </ResponseField>
+        <ResponseField name="text" type="string">
+          The feedback message body.
+        </ResponseField>
+        <ResponseField name="type" type="string">
+          Feedback category: `"weekly"`, `"activity"`, or `"general"`.
+        </ResponseField>
+        <ResponseField name="tlName" type="string">
+          Display name of the TL who sent the feedback.
+        </ResponseField>
+        <ResponseField name="createdAt" type="string">
+          ISO 8601 timestamp.
+        </ResponseField>
+        <ResponseField name="isRead" type="boolean">
+          `false` if the coder has not yet read this notification.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="riskFlags" type="object[]">
+  Active (unresolved) risk flags for this coder. At most 3 are returned.
+
+  <Expandable title="properties">
+    <ResponseField name="level" type="string">
+      Risk level: `"low"`, `"medium"`, or `"high"`.
+    </ResponseField>
+    <ResponseField name="reason" type="string">
+      Human-readable description of the risk.
+    </ResponseField>
+    <ResponseField name="detectedAt" type="string">
+      ISO 8601 timestamp of when the risk was flagged.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="performanceTests" type="object[]">
+  The three most recent performance test results.
+
+  <Expandable title="properties">
+    <ResponseField name="score" type="number">
+      Numeric test score.
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Test outcome status.
+    </ResponseField>
+    <ResponseField name="moduleName" type="string">
+      Name of the module this test was for.
+    </ResponseField>
+    <ResponseField name="takenAt" type="string">
+      ISO 8601 timestamp of when the test was taken.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "user": {
+    "fullName": "Alex Coder",
+    "email": "alex@riwi.io",
+    "clanId": "Turing",
+    "role": "coder",
+    "kairoScore": 78,
+    "moduleId": 4,
+    "moduleName": "Backend Node.js",
+    "moduleTotalWeeks": 8,
+    "isModuleCritical": false,
+    "learningStyleCache": "visual"
+  },
+  "softSkills": {
+    "autonomy": 3,
+    "timeManagement": 4,
+    "problemSolving": 3,
+    "communication": 4,
+    "teamwork": 5,
+    "learningStyle": "visual",
+    "assessedAt": "2026-02-10T14:23:00.000Z",
+    "average": 3.8
+  },
+  "progress": {
+    "currentWeek": 3,
+    "averageScore": 72.5,
+    "strugglingTopics": ["SQL JOINs", "REST design"],
+    "weeksCompleted": [],
+    "weeksCompletedCount": 2,
+    "updatedAt": "2026-03-10T09:00:00.000Z"
+  },
+  "activePlan": {
+    "id": 17,
+    "targetedSoftSkill": "autonomy",
+    "planType": "interpretive",
+    "generatedAt": "2026-03-01T11:00:00.000Z"
+  },
+  "notifications": {
+    "unread": 2,
+    "items": [
+      {
+        "id": 5,
+        "text": "Great work this week, keep pushing on the async concepts.",
+        "type": "weekly",
+        "tlName": "Maria TL",
+        "createdAt": "2026-03-14T18:00:00.000Z",
+        "isRead": false
+      }
+    ]
+  },
+  "riskFlags": [],
+  "performanceTests": [
+    {
+      "score": 85,
+      "status": "passed",
+      "moduleName": "Backend Node.js",
+      "takenAt": "2026-03-05T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+## Get module milestones
+
+**GET** `/api/coder/milestones`
+
+Returns a list of weekly milestones for the coder's current module, joined with the coder's average Moodle score for each week.
+
+### Responses
+
+<ResponseField name="milestones" type="object[]">
+  Ordered list of milestones by week number.
+
+  <Expandable title="properties">
+    <ResponseField name="module_name" type="string">
+      Name of the module.
+    </ResponseField>
+    <ResponseField name="week_number" type="number">
+      Week number within the module.
+    </ResponseField>
+    <ResponseField name="week_name" type="string">
+      Descriptive name for the week (e.g. `"Introduction to Express"`).
+    </ResponseField>
+    <ResponseField name="average_score" type="number | null">
+      The coder's average score for that week. `null` if not yet recorded.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "milestones": [
+    {
+      "module_name": "Backend Node.js",
+      "week_number": 1,
+      "week_name": "Introduction to Node & Express",
+      "average_score": 88.5
+    },
+    {
+      "module_name": "Backend Node.js",
+      "week_number": 2,
+      "week_name": "REST APIs and Routing",
+      "average_score": 72.0
+    },
+    {
+      "module_name": "Backend Node.js",
+      "week_number": 3,
+      "week_name": "Databases and PostgreSQL",
+      "average_score": null
+    }
+  ]
+}
+```
+
+---
+
+## Mark feedback as read
+
+**PATCH** `/api/coder/feedback/:id/read`
+
+Marks a feedback notification as read. After updating, a real-time notification is dispatched to the TL who sent the feedback, informing them that the coder has read their message.
+
+### Path parameters
+
+<ParamField path="id" type="number" required>
+  The ID of the feedback record to mark as read.
+</ParamField>
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the feedback was successfully marked as read.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message: `"Feedback marked as read"`.
+</ResponseField>
+
+### 200 — success
+
+```json
+{
+  "success": true,
+  "message": "Feedback marked as read"
+}
+```
+
+### 404 — feedback not found
+
+Returned when no feedback with the given ID exists for the authenticated coder.
+
+```json
+{
+  "error": "Feedback not found"
+}
+```

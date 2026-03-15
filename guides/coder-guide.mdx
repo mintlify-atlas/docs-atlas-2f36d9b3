@@ -1,0 +1,240 @@
+---
+title: "Coder guide"
+description: "A complete walkthrough for Coders — from registration to completing your first personalized learning plan."
+---
+
+As a Coder in Riwi's bootcamp program, Kairo is your companion throughout the 11-month curriculum. It analyzes your academic performance and soft skills to generate a personalized 4-week study plan, gives you daily activities matched to how you learn, and connects you directly with your Team Leader for feedback and support.
+
+<Note>
+  Your account has `role = 'coder'` in the system. This determines which views, API routes, and features are available to you.
+</Note>
+
+## What you can do with Kairo
+
+<CardGroup cols={2}>
+  <Card title="Personalized learning plan" icon="map">
+    Receive an AI-generated 4-week plan tailored to your soft skills profile and Moodle progress. Work through 20 daily activities structured around your learning style.
+  </Card>
+  <Card title="AI Tutor" icon="brain">
+    Ask the IAtrainer for explanations, code walkthroughs, and conceptual help at any time — directly from the `IAtrainer.html` view.
+  </Card>
+  <Card title="AI exercises" icon="code">
+    Generate practice exercises on demand. Submit your solutions for review by your Team Leader.
+  </Card>
+  <Card title="Resource library" icon="book-open">
+    Search PDF resources uploaded by your Team Leader using semantic search. Download materials relevant to your current struggles.
+  </Card>
+  <Card title="TL feedback" icon="bell">
+    Receive notifications when your Team Leader sends feedback. View messages on your dashboard bell and mark them as read.
+  </Card>
+  <Card title="Evidence submissions" icon="file-up">
+    Submit files or links as proof of completed activities. Your Team Leader can review and comment on your work.
+  </Card>
+</CardGroup>
+
+## Registration and email verification
+
+<Steps>
+  <Step title="Open the registration page">
+    Navigate to `auth/register.html`. Fill in your full name, email address, password, role (`coder`), and your clan ID (for example, `Turing`, `Tesla`, or `McCarthy`).
+
+    The request is sent to:
+
+    ```bash
+    POST /api/auth/register
+    ```
+
+    ```json
+    {
+      "email": "you@example.com",
+      "password": "yourpassword",
+      "fullName": "Your Name",
+      "role": "coder",
+      "clanId": "Turing"
+    }
+    ```
+  </Step>
+
+  <Step title="Check your email for the OTP">
+    Kairo sends a 6-digit one-time password to the email address you registered with via SMTP. The code expires after **15 minutes**.
+
+    <Warning>
+      The OTP expires 15 minutes after it is sent. If it expires before you enter it, return to the verification page and request a new code — a **Resend code** option calls `POST /api/auth/resend-otp` with your email address.
+    </Warning>
+  </Step>
+
+  <Step title="Enter the OTP on the verification page">
+    You are redirected to `auth/email-validation.html`. Enter the 6-digit code and submit. The request is sent to:
+
+    ```bash
+    POST /api/auth/verify-otp
+    ```
+
+    ```json
+    {
+      "email": "you@example.com",
+      "code": "847291"
+    }
+    ```
+
+    On success, a session is created and you are logged in. The server returns your `role`, `clanId`, and `firstLogin` status.
+  </Step>
+
+  <Step title="Log in">
+    After verification, you can log in at any time from `auth/login.html` using your email and password.
+  </Step>
+</Steps>
+
+## Onboarding — your first login
+
+The first time you log in, Kairo detects `first_login = true` on your account and redirects you to `coder/onboarding.html` before you reach your dashboard. You must complete the soft skills assessment before your first plan can be generated.
+
+See [Onboarding](/guides/onboarding) for the full step-by-step flow.
+
+## Your dashboard
+
+Once onboarding is complete, you land on `coder/dashboard.html`. The dashboard is populated by a single call to `GET /api/coder/dashboard` and gives you a snapshot of everything relevant to your progress.
+
+| Section | What it shows |
+|---|---|
+| Active plan | Your current learning plan, targeted soft skill, plan type, and generation date |
+| Soft skills | Your five dimension scores and average |
+| Moodle progress | Your current week, average score, and struggling topics |
+| Notifications | Last 5 TL feedback messages with unread count |
+| Risk flags | Any active, unresolved risk alerts on your account |
+| Performance tests | Your last 3 module performance test scores |
+| Kairo score | Your total engagement points |
+
+## Working through your plan
+
+Your active plan runs 20 working days (4 weeks). Open `coder/assignment.html` to view and work through it day by day.
+
+### Activity types
+
+Each day contains one or more activities. The AI selects the activity type based on your `autonomy` score from the soft skills assessment:
+
+| Type | Description |
+|---|---|
+| `guided` | Step-by-step instructions — lower autonomy Coders receive more of these |
+| `semi_guided` | Partial guidance with room to apply your own judgment |
+| `autonomous` | Open-ended tasks requiring independent research and execution |
+
+### Completing a day
+
+When you finish all activities for a day, mark it complete. The system records the timestamp in your plan's `completed_days` field, awards you Kairo score points, and advances your current day. Completing all 20 days earns a bonus.
+
+```bash
+POST /api/coder/plan/:planId/day/:day/complete
+```
+
+You can also mark an individual activity complete with an optional reflection note and time spent:
+
+```bash
+PATCH /api/coder/activities/:id/complete
+```
+
+```json
+{
+  "reflectionText": "I found this challenging but figured it out by breaking the problem down.",
+  "timeSpent": 45
+}
+```
+
+## Submitting evidence
+
+To attach proof of completed work, submit a file or a link from the assignment view:
+
+- **File upload** — attach a document, screenshot, or archive
+- **Link submission** — paste a GitHub repository, Notion page, or any URL
+
+Evidence is stored in the `evidence_submissions` table against the specific activity. Your Team Leader can then review your submission and leave written feedback.
+
+## Using the AI Tutor
+
+Open `coder/IAtrainer.html` to access the IAtrainer — Kairo's AI assistant. You can ask it to:
+
+- Explain a concept from your current plan activity
+- Walk through a code example step by step
+- Help you debug an error message
+- Clarify a topic you are struggling with in Moodle
+
+The IAtrainer is powered by the same Groq LLM used for plan generation. Conversations are not saved between sessions.
+
+## Generating AI exercises
+
+You can request a practice exercise tailored to your current focus from the assignment view:
+
+```bash
+POST /api/coder/exercise/generate
+```
+
+Kairo generates a coding exercise with a title, prompt, expected output, language, difficulty, and topic. Once you have written your solution, submit it for Team Leader review:
+
+```bash
+POST /api/coder/exercise/:exerciseId/submit
+```
+
+```json
+{
+  "codeSubmitted": "SELECT * FROM users WHERE role = 'coder';"
+}
+```
+
+When your Team Leader reviews your submission and leaves feedback, you receive a notification and earn Kairo score points.
+
+## Viewing and reading TL feedback
+
+Your notification bell on `dashboard.html` shows an unread count. Click it to see the last 5 messages from your Team Leader, including the feedback text, type, and the TL's name.
+
+Feedback can be one of three types:
+
+| Type | Meaning |
+|---|---|
+| `weekly` | An end-of-week check-in or summary from your TL |
+| `activity` | Feedback on a specific activity or exercise submission |
+| `general` | Ad-hoc message, encouragement, or alert |
+
+To mark a message as read and clear the notification dot:
+
+```bash
+PATCH /api/coder/feedback/:id/read
+```
+
+Marking a message read also sends a real-time confirmation to your Team Leader so they know you have seen their note.
+
+## Searching the resource library
+
+Your Team Leader uploads PDF resources for the clan. You can search them from the assignment view or a dedicated resource section:
+
+```bash
+POST /api/coder/resources/search
+```
+
+```json
+{
+  "query": "JOIN queries PostgreSQL"
+}
+```
+
+The search uses sentence embeddings for semantic matching, so you do not need exact keywords — a natural language description of what you are looking for works well. To download a resource:
+
+```bash
+GET /api/coder/resource/:id/download
+```
+
+## Updating your profile
+
+You can update your display name or clan assignment from `coder/profile.html`:
+
+```bash
+PATCH /api/auth/profile
+```
+
+```json
+{
+  "fullName": "Updated Name",
+  "clanId": "Tesla"
+}
+```
+
+Only the fields you include are updated. The response returns your updated profile.

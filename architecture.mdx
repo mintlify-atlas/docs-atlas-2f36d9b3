@@ -1,0 +1,196 @@
+---
+title: "Architecture"
+description: "Kairo's distributed system architecture — Node.js gateway, Python AI microservice, and PostgreSQL database."
+---
+
+Kairo runs as three independent services that communicate over HTTP. Each service has a distinct responsibility, and none of them share in-process state.
+
+## System overview
+
+<CardGroup cols={3}>
+  <Card title="Node.js API Gateway" icon="server">
+    Express.js server that owns business logic, authentication, session management, and all client-facing REST routes. Runs on port 3000.
+  </Card>
+  <Card title="Python AI Microservice" icon="brain">
+    FastAPI service that performs LLM inference, generates personalized learning plans, creates focus cards, runs semantic search, and produces TL reports. Runs on port 8000.
+  </Card>
+  <Card title="PostgreSQL (Supabase)" icon="database">
+    Single source of truth for users, soft skills assessments, learning plans, activities, evidence submissions, feedback, and AI generation logs. Hosted on Supabase.
+  </Card>
+</CardGroup>
+
+| Service | Technology | Port | Responsibility |
+|---|---|---|---|
+| API Gateway | Node.js 18 + Express 5 | 3000 | Auth, sessions, business logic, EJS rendering |
+| AI Microservice | Python 3.11 + FastAPI 0.115 | 8000 | LLM inference, embeddings, plan generation |
+| Database | PostgreSQL 14+ (Supabase) | 5432 | Persistent storage, views, enums |
+| Frontend | Vanilla JS + Bootstrap 5 | 5500 | Multi-Page Application served via Live Server |
+
+## Node.js API Gateway
+
+The Node.js backend is the single entry point for all client requests. It is built with Express 5 and uses Passport.js for authentication.
+
+### Routes
+
+| Route prefix | Purpose |
+|---|---|
+| `POST /api/auth` | Registration, login, logout, OTP verification, social OAuth callbacks |
+| `GET/POST /api/diagnostics` | Soft skills assessment submission and retrieval |
+| `GET/POST /api/coder` | Coder dashboard data, plan activation, activity progress |
+| `GET/POST /api/tl` | Team Leader dashboard, clan analytics, at-risk detection |
+| `GET/POST /api/ai` | Proxy to Python service — plan generation, chat, exercises, reports |
+| `GET/POST /api/notifications` | Unread TL feedback, notification state management |
+| `GET/PATCH /api/profile` | User profile retrieval and updates |
+| `/api` (assignments) | Evidence submission, TL feedback, assignment management |
+| `GET /api/health` | Health check — database connectivity and uptime |
+
+### Key middleware
+
+- **Session store**: Sessions are persisted in PostgreSQL via `connect-pg-simple`. The session cookie is named `riwi.sid` with a 24-hour TTL.
+- **CORS**: In development, `http://localhost:5500` and `http://localhost:5173` are whitelisted. In production, only the origin derived from `FRONTEND_URL` is allowed.
+- **Rate limiting**: Auth endpoints are limited to 20 requests per 15 minutes per IP. OTP endpoints are limited to 5 attempts per 10 minutes.
+- **Body parsing**: JSON and URL-encoded bodies up to 5 MB are accepted.
+
+### Dependencies
+
+Key packages from `package.json`:
+
+```json
+"express": "^5.2.1",
+"passport": "^0.7.0",
+"passport-github2": "^0.1.12",
+"passport-google-oauth20": "^2.0.0",
+"express-session": "^1.19.0",
+"connect-pg-simple": "^10.0.0",
+"pg": "^8.18.0",
+"@supabase/supabase-js": "^2.98.0",
+"bcrypt": "^6.0.0",
+"resend": "^6.9.3",
+"express-rate-limit": "^8.3.1"
+```
+
+## Python AI microservice
+
+The Python service is a FastAPI application (v2.3.0) responsible for all AI workloads. It uses Groq as the LLM provider (OpenAI-compatible API) and LangChain for prompt orchestration and JSON output validation. Sentence embeddings use `all-MiniLM-L6-v2` (384 dimensions) for semantic resource search.
+
+### Routes
+
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/generate-plan` | Generate a personalized 4-week learning plan from soft skills and Moodle data |
+| `POST` | `/generate-focus-cards` | Produce six prioritized focus cards (2 High, 2 Medium, 2 Low) |
+| `POST` | `/chat/ask` | AI tutor — answer questions in the context of the Coder's plan |
+| `POST` | `/generate-report` | Generate an executive summary report for Team Leaders |
+| `POST` | `/generate-exercise` | Create a coding or conceptual exercise for a given topic |
+| `POST` | `/exercise/{id}/submit` | Evaluate a Coder's exercise submission |
+| `POST` | `/search-resources` | Semantic search over curated PDF resources using embeddings |
+| `GET` | `/health` | Service health check (called by Node.js `GET /api/ai/health`) |
+| `GET` | `/` | Root — returns version and docs URL |
+
+### Key dependencies
+
+```text
+fastapi==0.115.0
+uvicorn==0.30.6
+groq==1.1.1
+supabase==2.7.4
+pydantic==2.9.2
+python-dotenv==1.0.1
+fpdf2==2.8.1
+numpy==1.26.4
+pdfplumber==0.11.4
+```
+
+## PostgreSQL database
+
+The database is hosted on Supabase (PostgreSQL 14+). The schema uses custom enum types to enforce domain integrity.
+
+### Enum types
+
+| Enum | Values |
+|---|---|
+| `role_enum` | `coder`, `tl` |
+| `learning_style_enum` | `visual`, `auditory`, `kinesthetic`, `mixed` |
+| `activity_type_enum` | `guided`, `semi_guided`, `autonomous` |
+| `risk_level_enum` | `low`, `medium`, `high` |
+| `ai_agent_enum` | `learning_plan`, `report_generator`, `risk_detector` |
+| `priority_level_enum` | `low`, `medium`, `high` |
+| `feedback_type_enum` | `weekly`, `activity`, `general` |
+
+### Core tables
+
+| Table | Description |
+|---|---|
+| `users` | All platform users (Coders and Team Leaders) with role, clan, and login state |
+| `soft_skills_assessment` | One-per-Coder record with scores (1–5) for autonomy, time management, problem solving, communication, and teamwork |
+| `modules` | Bootcamp modules (Backend, Frontend, etc.) |
+| `moodle_progress` | Per-Coder academic progress: current week, average score, struggling topics |
+| `topics` | Specific topics within each module |
+| `coder_struggling_topics` | Many-to-many join of Coders and the topics they find difficult |
+| `complementary_plans` | AI-generated personalized plans stored as JSONB, with priority level and snapshots of input data |
+| `plan_activities` | Daily activities belonging to a plan, with type and estimated time |
+| `activity_progress` | Tracks which activities each Coder has completed, with optional reflection text |
+| `evidence_submissions` | File URLs and links submitted by Coders as activity evidence |
+| `tl_feedback` | Text feedback from Team Leaders to Coders, with read/unread state |
+| `risk_flags` | Automatic and manual risk alerts (`low`, `medium`, `high`) per Coder |
+| `ai_reports` | Executive reports generated for Team Leaders, scoped to a Coder, clan, or cohort |
+| `ai_generation_log` | Full audit log of every AI call: input, output, model, execution time, and success state |
+
+### Views
+
+- **`v_coder_dashboard`** — Aggregates user, soft skills, Moodle progress, and activity completion rate for the Coder dashboard.
+- **`v_coder_risk_analysis`** — Computes a `calculated_risk_level` from autonomy scores and average grades, used by the TL dashboard.
+
+## Frontend
+
+The frontend is a Vanilla JS Multi-Page Application (MPA) served from port 5500. It uses Bootstrap 5 for layout and EJS templates rendered server-side by the Node.js backend for pages that require injected data.
+
+### Views
+
+| Directory | Pages |
+|---|---|
+| `views/auth/` | `login.html`, `register.html`, `email-validation.html` |
+| `views/coder/` | `dashboard.html`, `onboarding.html`, `assignment.html`, `IAtrainer.html`, `profile.html` |
+| `views/tl/` | `dashboard.html`, `group.html`, `assignment.html`, `profile.html` |
+
+## Service communication
+
+The Node.js gateway communicates with the Python service over HTTP using the `PYTHON_API_URL` environment variable (default: `http://localhost:8000`). All AI-related requests from the frontend hit a Node.js route under `/api/ai`, which proxies them to the corresponding Python endpoint after verifying the session.
+
+```
+Browser → POST /api/ai/generate-plan (Node.js :3000)
+         → POST /generate-plan       (Python  :8000)
+         ← JSON plan response
+         → INSERT INTO complementary_plans (PostgreSQL)
+         ← Plan ID returned to browser
+```
+
+The Python service also reads from and writes to Supabase directly using the `SUPABASE_SERVICE_KEY` (a privileged key that bypasses row-level security), so it can write AI outputs without going through the Node.js layer.
+
+## Authentication flow
+
+Kairo supports three authentication methods, all managed by Passport.js on the Node.js backend:
+
+1. **Email + password** — Passwords are hashed with bcrypt. On registration, an OTP is sent via SMTP (Gmail) using the Resend library. Email validation is required before first login.
+2. **GitHub OAuth** — Uses `passport-github2`. Callback URL: `/api/auth/github/callback`.
+3. **Google OAuth** — Uses `passport-google-oauth20`. Callback URL: `/api/auth/google/callback`.
+
+After successful authentication, a session is created and stored in the `session` PostgreSQL table via `connect-pg-simple`. The session cookie (`riwi.sid`) is `httpOnly`, `sameSite: lax` in development, and `sameSite: none; secure` in production.
+
+<Note>
+  Social OAuth requires the callback URLs to be registered in your GitHub and Google developer consoles. In production, the base URL is `https://kairo-integrative-project-turing-production.up.railway.app`. In development it is `http://localhost:3000`.
+</Note>
+
+## AI pipeline
+
+The end-to-end flow from a Coder joining the platform to receiving a learning plan:
+
+1. **Coder registers** — Account created in `users` table with `role = 'coder'`. OTP sent by email.
+2. **Email verified** — OTP confirmed; `first_login` flag remains `true`.
+3. **Soft skills assessment** — Coder completes onboarding form. Scores saved to `soft_skills_assessment`.
+4. **Plan generation** — Node.js calls `POST /generate-plan` on the Python service, passing the soft skills snapshot and Moodle progress. Groq LLM (`llama-3.3-70b-versatile` by default) generates a structured plan via LangChain prompt orchestration.
+5. **Plan saved** — The plan JSON is stored in `complementary_plans`. Individual activities are inserted into `plan_activities`.
+6. **Daily activities** — Coder works through guided, semi-guided, and autonomous activities. Progress tracked in `activity_progress`.
+7. **Evidence submission** — Coder uploads files or links stored in `evidence_submissions`.
+8. **TL review** — Team Leader reviews submissions, writes feedback stored in `tl_feedback`, and can trigger `POST /generate-report` to get an AI-generated cohort summary.
+9. **Risk detection** — The `v_coder_risk_analysis` view continuously calculates risk levels. Flags are written to `risk_flags` and surfaced on the TL dashboard.

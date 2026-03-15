@@ -1,0 +1,126 @@
+---
+title: "Environment variables"
+description: "Complete reference for all environment variables required by the Node.js gateway and the Python AI microservice."
+---
+
+Both backend services are configured exclusively through `.env` files. Neither service has default values for secrets — you must supply all required variables before starting.
+
+<Warning>
+  `SESSION_SECRET` and `FRONTEND_URL` are the two most common sources of production problems. `SESSION_SECRET` must be a long, unpredictable string — if left at the development fallback (`dev_secret_fallback`), sessions are insecure. `FRONTEND_URL` must exactly match the origin of your deployed frontend or every browser request will be blocked by CORS.
+</Warning>
+
+## Node.js backend (`backend-node/.env`)
+
+### Server
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `PORT` | No | `3000` | Port the Express server listens on. |
+| `NODE_ENV` | No | `development` | Set to `production` to enable secure cookies, strict CORS, and suppressed error details. |
+
+### Security and sessions
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SESSION_SECRET` | **Yes** | `dev_secret_fallback` | Secret used to sign the `riwi.sid` session cookie. Must be a long, random string in production. |
+
+<Warning>
+  Never deploy with `SESSION_SECRET=dev_secret_fallback`. Anyone who knows this value can forge session cookies and impersonate any user.
+</Warning>
+
+### Database
+
+The Node.js service builds its PostgreSQL connection string from individual `DB_*` variables if `DATABASE_URL` is not set.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | No* | — | Full PostgreSQL connection string. Takes priority over all individual `DB_*` variables. Required when using the Supabase pooler. |
+| `DB_HOST` | No* | `localhost` | PostgreSQL host. For Supabase, use the pooler host (e.g., `aws-0-us-east-1.pooler.supabase.com`). |
+| `DB_PORT` | No | `5432` | PostgreSQL port. |
+| `DB_NAME` | No | `postgres` | Database name. |
+| `DB_USER` | No* | `postgres` | Database user. For Supabase, format as `postgres.PROJECT_ID`. |
+| `DB_PASSWORD` | No* | — | Database user password. |
+
+\* Either `DATABASE_URL` **or** all four of `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` must be set for the service to connect.
+
+<Note>
+  SSL is enabled by default for all database connections. If you are connecting to a local PostgreSQL instance (not Supabase), add `DB_SSL=false` to disable it.
+</Note>
+
+### Supabase
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SUPABASE_URL` | **Yes** | — | Your Supabase project URL (e.g., `https://abc123.supabase.co`). Found under **Project Settings → API**. |
+| `SUPABASE_ANON_KEY` | **Yes** | — | Supabase anonymous (public) key. Used for client-side Supabase SDK calls from the Node.js service. |
+
+### Frontend and inter-service communication
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `FRONTEND_URL` | **Yes** | `http://127.0.0.1:5500/frontend` | Full URL to the frontend origin. In production, must match the deployed frontend origin exactly (e.g., `https://yoursite.github.io`). Drives the CORS `origin` allowlist. |
+| `PYTHON_API_URL` | No | `http://localhost:8000` | Base URL of the Python AI microservice. All AI requests from the Node.js gateway are proxied to this address. |
+
+### Authentication — OAuth
+
+OAuth providers are optional. If `GITHUB_CLIENT_ID` or `GOOGLE_CLIENT_ID` is missing at startup, that provider is silently disabled and Passport logs a warning.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GITHUB_CLIENT_ID` | No | — | GitHub OAuth app client ID. |
+| `GITHUB_CLIENT_SECRET` | No | — | GitHub OAuth app client secret. |
+| `GOOGLE_CLIENT_ID` | No | — | Google OAuth 2.0 client ID. |
+| `GOOGLE_CLIENT_SECRET` | No | — | Google OAuth 2.0 client secret. |
+
+### Authentication — Email (SMTP)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SMTP_HOST` | No | — | SMTP server hostname (e.g., `smtp.gmail.com`). |
+| `SMTP_PORT` | No | — | SMTP port (e.g., `465` for SSL, `587` for STARTTLS). |
+| `SMTP_SECURE` | No | — | Set to `true` to use SSL/TLS on the SMTP connection. |
+| `SMTP_USER` | No | — | SMTP authentication username (usually the sender email address). |
+| `SMTP_PASS` | No | — | SMTP password or app-specific password. |
+| `SMTP_FROM` | No | — | Sender name and address shown in outgoing emails (e.g., `"Kairo <noreply@example.com>"`). |
+
+### AI
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `RIWI_IA_KEY` | No | — | Internal AI API key used by the Node.js gateway when proxying AI requests. |
+
+---
+
+## Python backend (`backend-python/.env`)
+
+### Server
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `PORT` | No | `8000` | Port Uvicorn listens on. In Railway deployments, this is injected automatically. |
+| `ENV` | No | `development` | Runtime environment. Set to `production` for production deployments. |
+
+### AI model
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENAI_API_KEY` | **Yes** | — | Your Groq API key. The variable is named `OPENAI_API_KEY` for legacy compatibility — the Python service uses the OpenAI-compatible Groq endpoint. Get a key at [console.groq.com](https://console.groq.com). |
+| `MODEL_NAME` | No | `llama-3.3-70b-versatile` | Groq model identifier used for all plan generation, report, and chat completions. |
+
+<Note>
+  `OPENAI_API_KEY` is **not** an OpenAI key — it is your Groq API key. The Python service routes all LLM calls through the Groq API using an OpenAI-compatible client. The variable name is a legacy artifact from an earlier version of the service.
+</Note>
+
+### Supabase
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SUPABASE_URL` | **Yes** | — | Your Supabase project URL. Must match the value used in the Node.js service. |
+| `SUPABASE_SERVICE_KEY` | **Yes** | — | Supabase service role key (not the anon key). Grants the Python service full database access for reading coder profiles and writing AI-generated plans. |
+
+### Inter-service communication
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `NODE_URL` | No | `http://localhost:3000` | Base URL of the Node.js gateway. Added to the Python service's CORS allowlist so the gateway can call AI endpoints. |
+| `FRONTEND_URL` | No | `http://localhost:5500` | Frontend origin. Added to the CORS allowlist alongside `NODE_URL`. |

@@ -1,0 +1,96 @@
+---
+title: "Register"
+description: "Create a new Kairo account. After registration, a 6-digit OTP is sent to the provided email for verification."
+---
+
+`POST /api/auth/register`
+
+Creates a new user account. The password is hashed with bcrypt (12 rounds) before storage. The user is created with `otp_verified = false` — the account is not active until the OTP is verified via [`POST /api/auth/verify-otp`](/api-reference/auth/verify-otp).
+
+**Auth required:** No
+
+## Request body
+
+<ParamField body="email" type="string" required>
+  The user's email address. Must be unique across all accounts.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Plain-text password. Hashed with bcrypt (12 salt rounds) before storage. Not returned in any response.
+</ParamField>
+
+<ParamField body="fullName" type="string" required>
+  The user's display name (e.g. `"Alex Coder"`).
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  The user's role. Must be `"coder"` or `"tl"`. Defaults to `"coder"` if omitted.
+</ParamField>
+
+<ParamField body="clanId" type="string">
+  The clan the coder belongs to (e.g. `"Turing"`, `"Tesla"`, `"McCarthy"`). Optional. Only relevant for `coder` accounts.
+</ParamField>
+
+## Example request
+
+```json
+{
+  "email": "alex@riwi.io",
+  "password": "mypassword123",
+  "fullName": "Alex Coder",
+  "role": "coder",
+  "clanId": "Turing"
+}
+```
+
+## Responses
+
+<ResponseField name="message" type="string">
+  Confirmation that the OTP was sent.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The email address the OTP was sent to.
+</ResponseField>
+
+<ResponseField name="ttl" type="number">
+  Time-to-live of the OTP in seconds (900 = 15 minutes).
+</ResponseField>
+
+### 201 — account created
+
+```json
+{
+  "message": "Verification code sent.",
+  "email": "alex@riwi.io",
+  "ttl": 900
+}
+```
+
+### 409 — email already registered
+
+Returned when the email is already associated with a verified account.
+
+```json
+{
+  "error": "Email already registered."
+}
+```
+
+### 400 — missing fields
+
+Returned when required fields are missing from the request body.
+
+```json
+{
+  "error": "Registration process failed."
+}
+```
+
+<Note>
+  Registration does **not** create an active session. After a successful `201` response, you must call [`POST /api/auth/verify-otp`](/api-reference/auth/verify-otp) with the emailed code to activate the account and start a session.
+</Note>
+
+## Re-registration behavior
+
+If the email exists but `otp_verified = false` (a previous registration that was never verified), the server skips creating a new user record and sends a fresh OTP to the same email. This allows users to retry verification without needing to use a different email.

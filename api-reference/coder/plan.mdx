@@ -1,0 +1,389 @@
+---
+title: "Learning plan"
+description: "Retrieve, request, and track progress on AI-generated personalized learning plans."
+---
+
+All routes in this group require an active session with `role = coder` and completed onboarding.
+
+<Note>
+  Requesting a new plan deactivates the previously active plan. Only one plan can be active at a time.
+</Note>
+
+---
+
+## Get active plan
+
+**GET** `/api/coder/plan`
+
+Returns the coder's current active learning plan, including its full content, completed days, and the next uncompleted day. If no active plan exists, `hasPlan` is `false` and `plan` is `null`.
+
+### Responses
+
+<ResponseField name="hasPlan" type="boolean">
+  `true` if an active plan exists for the coder.
+</ResponseField>
+
+<ResponseField name="plan" type="object | null">
+  The active learning plan. `null` when `hasPlan` is `false`.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Plan ID.
+    </ResponseField>
+    <ResponseField name="moduleId" type="number">
+      ID of the module this plan was generated for.
+    </ResponseField>
+    <ResponseField name="planContent" type="object">
+      The full AI-generated plan structure. Contains cards and activities organized by day.
+    </ResponseField>
+    <ResponseField name="softSkillsSnapshot" type="object">
+      A snapshot of the coder's soft skill scores at the time of generation.
+    </ResponseField>
+    <ResponseField name="moodleStatusSnapshot" type="object">
+      A snapshot of the coder's Moodle progress at the time of generation, including `plan_type`.
+    </ResponseField>
+    <ResponseField name="targetedSoftSkill" type="string">
+      The specific soft skill this plan is designed to improve.
+    </ResponseField>
+    <ResponseField name="generatedAt" type="string">
+      ISO 8601 timestamp of when the plan was generated.
+    </ResponseField>
+    <ResponseField name="completedDays" type="object">
+      A map of completed day numbers to their completion timestamps. Keys are stringified day numbers (e.g. `"1"`, `"2"`).
+    </ResponseField>
+    <ResponseField name="currentDay" type="number">
+      The first uncompleted day number between 1 and 20.
+    </ResponseField>
+    <ResponseField name="completedCount" type="number">
+      Number of days completed so far.
+    </ResponseField>
+    <ResponseField name="isComplete" type="boolean">
+      `true` when all 20 days have been completed.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "hasPlan": true,
+  "plan": {
+    "id": 17,
+    "moduleId": 4,
+    "planContent": {
+      "cards": [
+        {
+          "priority": "high",
+          "title": "Autonomy sprint",
+          "days": [1, 2, 3, 4, 5]
+        }
+      ]
+    },
+    "softSkillsSnapshot": { "autonomy": 2, "timeManagement": 3 },
+    "moodleStatusSnapshot": { "plan_type": "interpretive", "currentWeek": 3 },
+    "targetedSoftSkill": "autonomy",
+    "generatedAt": "2026-03-01T11:00:00.000Z",
+    "completedDays": {
+      "1": { "completedAt": "2026-03-02T10:00:00.000Z" },
+      "2": { "completedAt": "2026-03-03T09:30:00.000Z" }
+    },
+    "currentDay": 3,
+    "completedCount": 2,
+    "isComplete": false
+  }
+}
+```
+
+---
+
+## Request a new plan
+
+**POST** `/api/coder/plan/request`
+
+Triggers AI plan generation for the authenticated coder. The server responds immediately and dispatches the generation request to the Python AI service in the background. Poll `GET /api/coder/plan` after a few seconds to retrieve the generated plan.
+
+<Note>
+  Requesting a new plan deactivates any existing active plan. The previous plan is not deleted and can still be retrieved by ID.
+</Note>
+
+### Request body
+
+<ParamField body="module_id" type="number">
+  The ID of the module to generate the plan for. If omitted, the server uses the coder's `current_module_id`.
+</ParamField>
+
+<ParamField body="plan_type" type="string" default="interpretive">
+  Controls the AI generation style. Accepted values: `"interpretive"` (focuses on understanding and reflection) or `"analytical"` (focuses on structured problem-solving). Defaults to `"interpretive"`.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "module_id": 4,
+  "plan_type": "interpretive"
+}
+```
+
+### Responses
+
+<ResponseField name="requested" type="boolean">
+  Always `true` when the request was accepted.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  A status message indicating the plan is being generated.
+</ResponseField>
+
+### 200 — accepted
+
+```json
+{
+  "requested": true,
+  "message": "Plan en generación. Reintenta en unos segundos."
+}
+```
+
+---
+
+## Get plan details
+
+**GET** `/api/coder/plans/:planId`
+
+Returns the full details of a specific plan including all associated `plan_activities` records. Useful for retrieving historical or inactive plans.
+
+### Path parameters
+
+<ParamField path="planId" type="number" required>
+  The ID of the plan to retrieve.
+</ParamField>
+
+### Responses
+
+<ResponseField name="plan" type="object">
+  The plan record with all fields from `complementary_plans`, plus an `activities` array.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Plan ID.
+    </ResponseField>
+    <ResponseField name="coder_id" type="number">
+      ID of the coder this plan belongs to.
+    </ResponseField>
+    <ResponseField name="module_id" type="number">
+      Module ID.
+    </ResponseField>
+    <ResponseField name="plan_content" type="object">
+      AI-generated plan content.
+    </ResponseField>
+    <ResponseField name="targeted_soft_skill" type="string">
+      The soft skill targeted by this plan.
+    </ResponseField>
+    <ResponseField name="is_active" type="boolean">
+      Whether this plan is currently the active plan.
+    </ResponseField>
+    <ResponseField name="generated_at" type="string">
+      ISO 8601 generation timestamp.
+    </ResponseField>
+    <ResponseField name="completed_days" type="object">
+      Map of completed day numbers to completion timestamps.
+    </ResponseField>
+    <ResponseField name="activities" type="object[]">
+      All `plan_activities` rows for this plan, ordered by `day_number` and `id`.
+
+      <Expandable title="activity properties">
+        <ResponseField name="id" type="number">
+          Activity ID.
+        </ResponseField>
+        <ResponseField name="day_number" type="number">
+          Day this activity belongs to (1–20).
+        </ResponseField>
+        <ResponseField name="title" type="string">
+          Activity title.
+        </ResponseField>
+        <ResponseField name="description" type="string">
+          Detailed description of the activity.
+        </ResponseField>
+        <ResponseField name="estimated_time_minutes" type="number">
+          Estimated time to complete the activity.
+        </ResponseField>
+        <ResponseField name="activity_type" type="string">
+          Type: `"guided"`, `"semi_guided"`, or `"autonomous"`.
+        </ResponseField>
+        <ResponseField name="skill_focus" type="string">
+          The skill this activity is designed to develop.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 404 — plan not found
+
+```json
+{
+  "error": "Plan not found"
+}
+```
+
+---
+
+## Complete a day
+
+**POST** `/api/coder/plan/:planId/day/:day/complete`
+
+Marks a full day as completed within an active plan. Automatically marks all `plan_activities` for that day as completed in `activity_progress`. Awards Kairo points for the completed day. Completing all 20 days awards a bonus.
+
+### Path parameters
+
+<ParamField path="planId" type="number" required>
+  The ID of the active plan.
+</ParamField>
+
+<ParamField path="day" type="number" required>
+  The day number to mark as complete. Must be between `1` and `20`.
+</ParamField>
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` when the day was marked as complete.
+</ResponseField>
+
+<ResponseField name="completedDays" type="object">
+  Updated map of all completed day numbers to their completion timestamps.
+</ResponseField>
+
+<ResponseField name="completedCount" type="number">
+  Total number of days completed after this action.
+</ResponseField>
+
+<ResponseField name="nextDay" type="number | null">
+  The next uncompleted day number, or `null` if the plan is now fully complete.
+</ResponseField>
+
+<ResponseField name="isComplete" type="boolean">
+  `true` when all 20 days have been completed.
+</ResponseField>
+
+<ResponseField name="kairoScore" type="number">
+  The coder's updated Kairo score after points are awarded.
+</ResponseField>
+
+### 200 — day completed
+
+```json
+{
+  "success": true,
+  "completedDays": {
+    "1": { "completedAt": "2026-03-02T10:00:00.000Z" },
+    "2": { "completedAt": "2026-03-03T09:30:00.000Z" },
+    "3": { "completedAt": "2026-03-15T08:45:00.000Z" }
+  },
+  "completedCount": 3,
+  "nextDay": 4,
+  "isComplete": false,
+  "kairoScore": 85
+}
+```
+
+### 400 — invalid day
+
+```json
+{
+  "error": "Día inválido. Debe ser entre 1 y 20."
+}
+```
+
+### 404 — plan not found or inactive
+
+```json
+{
+  "error": "Plan no encontrado o inactivo."
+}
+```
+
+---
+
+## Complete an activity
+
+**PATCH** `/api/coder/activities/:id/complete`
+
+Marks an individual plan activity as completed. Optionally accepts a reflection note and time spent. Uses an upsert so re-submitting updates the existing progress record.
+
+### Path parameters
+
+<ParamField path="id" type="number" required>
+  The ID of the `plan_activities` record to mark as complete.
+</ParamField>
+
+### Request body
+
+<ParamField body="reflectionText" type="string">
+  An optional reflection or note written by the coder about this activity.
+</ParamField>
+
+<ParamField body="timeSpent" type="number">
+  Optional. Time spent on the activity in minutes.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "reflectionText": "I understood how JOINs work now. The diagram helped a lot.",
+  "timeSpent": 45
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` on a successful upsert.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The full `activity_progress` row after the upsert.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Progress record ID.
+    </ResponseField>
+    <ResponseField name="activity_id" type="number">
+      ID of the associated plan activity.
+    </ResponseField>
+    <ResponseField name="coder_id" type="number">
+      ID of the coder.
+    </ResponseField>
+    <ResponseField name="completed" type="boolean">
+      Always `true` after this operation.
+    </ResponseField>
+    <ResponseField name="reflection_text" type="string | null">
+      The saved reflection text.
+    </ResponseField>
+    <ResponseField name="time_spent_minutes" type="number | null">
+      The saved time in minutes.
+    </ResponseField>
+    <ResponseField name="completed_at" type="string">
+      ISO 8601 timestamp of completion.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### 200 — activity completed
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 204,
+    "activity_id": 88,
+    "coder_id": 42,
+    "completed": true,
+    "reflection_text": "I understood how JOINs work now. The diagram helped a lot.",
+    "time_spent_minutes": 45,
+    "completed_at": "2026-03-15T08:50:00.000Z"
+  }
+}
+```

@@ -1,0 +1,81 @@
+---
+title: "AI tutor chat"
+description: "Send a message to the AI tutor and receive a contextual response powered by Groq's LLM."
+---
+
+This endpoint connects to Kairo's AI tutor, powered by Groq using the `llama-3.3-70b-versatile` model by default (configurable via the `MODEL_NAME` environment variable). The tutor is designed to give concise, practical answers to programming questions in plain language.
+
+**Endpoint:** `POST http://localhost:8000/chat/ask`
+
+<Note>
+  The `/chat/ask` endpoint is served directly by the Python AI microservice and is **not** proxied through the Node.js gateway at `/api/ai/*`. Clients that need to call this endpoint should point directly at the Python service on port 8000, or configure their own proxy.
+</Note>
+
+---
+
+## Model behavior
+
+The tutor uses a fixed system prompt that instructs it to:
+
+- Give a short answer first, then explain if needed.
+- Use simple language with a maximum of 3 paragraphs.
+- Be concise, motivating, and practical.
+
+The LLM model is configured via the `MODEL_NAME` environment variable. If not set, it defaults to `llama-3.3-70b-versatile`.
+
+---
+
+## Request body
+
+<ParamField body="message" type="string" required>
+  The question or message to send to the AI tutor. Cannot be empty or whitespace-only.
+</ParamField>
+
+<ParamField body="coder_id" type="integer">
+  Optional coder ID. Accepted for logging purposes but not currently used to personalize the response.
+</ParamField>
+
+---
+
+## Example request
+
+```json
+{
+  "message": "What is the difference between INNER JOIN and LEFT JOIN in SQL?",
+  "coder_id": 42
+}
+```
+
+---
+
+## Responses
+
+<ResponseField name="reply" type="string">
+  The AI tutor's response. Always a plain text string — no JSON nesting or markdown wrappers.
+</ResponseField>
+
+---
+
+## 200 — response received
+
+```json
+{
+  "reply": "An INNER JOIN returns only rows where there's a match in both tables. A LEFT JOIN returns all rows from the left table plus matching rows from the right — if there's no match, the right side columns are NULL.\n\nUse INNER JOIN when you only care about records that exist in both tables (e.g., orders with a valid customer). Use LEFT JOIN when you want to keep all records from the first table regardless of whether a match exists (e.g., all customers, even those with no orders).\n\nA quick rule: if you're worried about losing rows, use LEFT JOIN."
+}
+```
+
+## 400 — empty message
+
+```json
+{
+  "detail": "Message cannot be empty"
+}
+```
+
+## 500 — LLM unavailable
+
+```json
+{
+  "detail": "AI tutor temporarily unavailable"
+}
+```

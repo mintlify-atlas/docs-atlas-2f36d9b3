@@ -1,0 +1,265 @@
+---
+title: "Exercises"
+description: "Generate AI-powered coding exercises, submit solutions, and retrieve submission history."
+---
+
+All routes in this group require an active session with `role = coder` and completed onboarding.
+
+<Note>
+  Exercise generation is cached per plan and day. If an exercise already exists for a given `planId` and `dayNumber` combination, the cached exercise is returned immediately without calling the AI service.
+</Note>
+
+---
+
+## Generate an exercise
+
+**POST** `/api/coder/exercise/generate`
+
+Generates an AI coding exercise tailored to a specific day of the coder's learning plan. The exercise is based on the activity's topic, difficulty, and the module's programming language. If an exercise already exists for the same `planId` + `dayNumber`, the existing record is returned.
+
+### Request body
+
+<ParamField body="planId" type="number" required>
+  The ID of the active learning plan.
+</ParamField>
+
+<ParamField body="dayNumber" type="number" required>
+  The day number within the plan (1–20) for which to generate the exercise.
+</ParamField>
+
+<ParamField body="topic" type="string" required>
+  The topic the exercise should cover (e.g. `"SQL JOINs"`, `"Express middleware"`).
+</ParamField>
+
+<ParamField body="weekNumber" type="number" default="1">
+  The current week number within the module. Used as context for the AI generator.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional description providing additional context for exercise generation.
+</ParamField>
+
+<ParamField body="difficulty" type="string" default="intermediate">
+  Exercise difficulty level. Common values: `"beginner"`, `"intermediate"`, `"advanced"`.
+</ParamField>
+
+<ParamField body="moduleName" type="string" default="Bases de Datos">
+  The name of the current module, used to contextualize the exercise.
+</ParamField>
+
+<ParamField body="language" type="string">
+  Programming language for the exercise (e.g. `"javascript"`, `"sql"`). If omitted, the AI service determines the language.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "planId": 17,
+  "dayNumber": 3,
+  "topic": "SQL JOINs",
+  "weekNumber": 2,
+  "difficulty": "intermediate",
+  "moduleName": "Backend Node.js",
+  "language": "sql"
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` on a successful generation or cache hit.
+</ResponseField>
+
+<ResponseField name="exercise" type="object">
+  The generated or cached exercise.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Exercise ID.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Exercise title.
+    </ResponseField>
+    <ResponseField name="description" type="string">
+      Full problem statement.
+    </ResponseField>
+    <ResponseField name="language" type="string">
+      Programming language (e.g. `"sql"`, `"javascript"`).
+    </ResponseField>
+    <ResponseField name="starter_code" type="string">
+      Initial code scaffold provided to the coder.
+    </ResponseField>
+    <ResponseField name="hints" type="string[] | null">
+      Optional list of hints to guide the coder.
+    </ResponseField>
+    <ResponseField name="topic" type="string">
+      The topic this exercise covers.
+    </ResponseField>
+    <ResponseField name="difficulty" type="string">
+      Difficulty level of the exercise.
+    </ResponseField>
+    <ResponseField name="expected_output" type="string">
+      The expected result or output for a correct solution.
+    </ResponseField>
+    <ResponseField name="day_number" type="number">
+      The plan day this exercise belongs to.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cached" type="boolean">
+  `true` when the returned exercise was retrieved from the cache rather than generated fresh.
+</ResponseField>
+
+### 200 — exercise returned (cached)
+
+```json
+{
+  "success": true,
+  "exercise": {
+    "id": 31,
+    "title": "Customer order summary",
+    "description": "Write a SQL query that returns each customer's name and their total number of orders.",
+    "language": "sql",
+    "starter_code": "SELECT -- your query here\nFROM customers\n-- add JOIN and GROUP BY",
+    "hints": ["Use INNER JOIN to link customers and orders", "GROUP BY customer id"],
+    "topic": "SQL JOINs",
+    "difficulty": "intermediate",
+    "expected_output": "A table with columns: customer_name, order_count",
+    "day_number": 3
+  },
+  "cached": true
+}
+```
+
+### 502 — AI service unavailable
+
+Returned when exercise generation fails because the Python API is unreachable.
+
+```json
+{
+  "error": "Python API responded 503"
+}
+```
+
+---
+
+## Submit a solution
+
+**POST** `/api/coder/exercise/:exerciseId/submit`
+
+Submits a code solution for a specific exercise. The submission is stored and made visible to the coder's TL for review. Kairo points are awarded upon successful submission.
+
+### Path parameters
+
+<ParamField path="exerciseId" type="number" required>
+  The ID of the exercise to submit a solution for.
+</ParamField>
+
+### Request body
+
+<ParamField body="code" type="string" required>
+  The coder's solution code. Cannot be empty or whitespace-only.
+</ParamField>
+
+### Example request
+
+```json
+{
+  "code": "SELECT c.name, COUNT(o.id) AS order_count\nFROM customers c\nINNER JOIN orders o ON o.customer_id = c.id\nGROUP BY c.id, c.name;"
+}
+```
+
+### Responses
+
+<ResponseField name="success" type="boolean">
+  `true` on successful submission.
+</ResponseField>
+
+<ResponseField name="submissionId" type="number">
+  The ID of the newly created `exercise_submissions` record.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  A confirmation message.
+</ResponseField>
+
+### 200 — submission accepted
+
+```json
+{
+  "success": true,
+  "submissionId": 109,
+  "message": "¡Solución enviada! Tu TL podrá revisarla."
+}
+```
+
+### 400 — empty code
+
+```json
+{
+  "error": "El campo code no puede estar vacío."
+}
+```
+
+### 404 — exercise not found
+
+Returned when the exercise does not exist or does not belong to a plan owned by the authenticated coder.
+
+```json
+{
+  "error": "Ejercicio no encontrado."
+}
+```
+
+---
+
+## Get submission history
+
+**GET** `/api/coder/exercise/:exerciseId/submissions`
+
+Returns the coder's submission history for a specific exercise. Returns the five most recent submissions in descending order.
+
+### Path parameters
+
+<ParamField path="exerciseId" type="number" required>
+  The ID of the exercise.
+</ParamField>
+
+### Responses
+
+<ResponseField name="submissions" type="object[]">
+  List of submissions, newest first. At most 5 are returned.
+
+  <Expandable title="properties">
+    <ResponseField name="id" type="number">
+      Submission ID.
+    </ResponseField>
+    <ResponseField name="code_submitted" type="string">
+      The code the coder submitted.
+    </ResponseField>
+    <ResponseField name="submitted_at" type="string">
+      ISO 8601 timestamp of when the submission was made.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "submissions": [
+    {
+      "id": 109,
+      "code_submitted": "SELECT c.name, COUNT(o.id) AS order_count FROM customers c INNER JOIN orders o ON o.customer_id = c.id GROUP BY c.id, c.name;",
+      "submitted_at": "2026-03-15T09:00:00.000Z"
+    },
+    {
+      "id": 102,
+      "code_submitted": "SELECT c.name FROM customers c JOIN orders o ON o.customer_id = c.id;",
+      "submitted_at": "2026-03-14T17:30:00.000Z"
+    }
+  ]
+}
+```
