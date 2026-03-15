@@ -1,0 +1,148 @@
+{
+  "projectType": "saas",
+  "projectName": "Kairo",
+  "projectDescription": "Kairo is an AI-powered personalized learning platform for bootcamp students that generates adaptive 4-week study plans, integrates soft skills assessments, and provides Team Leaders with analytics dashboards to identify at-risk coders.",
+  "theme": "palm",
+  "primaryColor": "#6366F1",
+  "lightColor": "#818CF8",
+  "darkColor": "#4338CA",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/personalized-learning-plans",
+              "features/soft-skills-assessment",
+              "features/ai-tutor",
+              "features/tl-dashboard",
+              "features/notifications"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/coder-guide",
+              "guides/team-leader-guide",
+              "guides/onboarding"
+            ]
+          },
+          {
+            "group": "Self-Hosting",
+            "pages": [
+              "self-hosting/setup",
+              "self-hosting/environment-variables",
+              "self-hosting/database"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/authentication"
+            ]
+          },
+          {
+            "group": "Auth",
+            "pages": [
+              "api-reference/auth/register",
+              "api-reference/auth/login",
+              "api-reference/auth/social-auth",
+              "api-reference/auth/verify-otp"
+            ]
+          },
+          {
+            "group": "Coder",
+            "pages": [
+              "api-reference/coder/dashboard",
+              "api-reference/coder/plan",
+              "api-reference/coder/exercises",
+              "api-reference/coder/resources"
+            ]
+          },
+          {
+            "group": "Team Leader",
+            "pages": [
+              "api-reference/tl/dashboard",
+              "api-reference/tl/feedback",
+              "api-reference/tl/submissions",
+              "api-reference/tl/resources"
+            ]
+          },
+          {
+            "group": "AI Engine",
+            "pages": [
+              "api-reference/ai/generate-plan",
+              "api-reference/ai/generate-focus-cards",
+              "api-reference/ai/generate-report",
+              "api-reference/ai/chat",
+              "api-reference/ai/exercises",
+              "api-reference/ai/search-resources"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "AI-generated adaptive 4-week learning plans based on Moodle data and individual performance",
+    "Soft skills assessment (autonomy, time management, communication, teamwork, problem solving)",
+    "AI Tutor chat powered by Groq LLM (Qwen2.5-7B-Instruct / llama-3.3-70b-versatile)",
+    "Focus cards with prioritized study topics (2 High, 2 Medium, 2 Low priority)",
+    "Team Leader analytics dashboard with at-risk coder detection and risk flagging",
+    "AI-generated executive reports for clan and cohort-level performance",
+    "Resource library with semantic search via embeddings (all-MiniLM-L6-v2)",
+    "Social authentication (Google OAuth2, GitHub OAuth)",
+    "OTP email verification for account security",
+    "Evidence submission system for completed activities"
+  ],
+  "publicApiSurface": [
+    "POST /api/auth/register",
+    "POST /api/auth/login",
+    "POST /api/auth/verify-otp",
+    "POST /api/auth/resend-otp",
+    "GET /api/auth/check",
+    "GET /api/auth/google",
+    "GET /api/auth/github",
+    "POST /api/auth/logout",
+    "GET /api/coder/dashboard",
+    "GET /api/coder/plan",
+    "POST /api/coder/plan/request",
+    "POST /api/coder/plan/:planId/day/:day/complete",
+    "POST /api/coder/exercise/generate",
+    "POST /api/coder/exercise/:exerciseId/submit",
+    "GET /api/coder/resources",
+    "POST /api/coder/resources/search",
+    "GET /api/tl/dashboard",
+    "POST /api/tl/feedback",
+    "GET /api/tl/submissions",
+    "POST /api/tl/submissions/:id/review",
+    "GET /api/tl/ranking",
+    "POST /api/tl/resource/upload",
+    "POST /api/ai/generate-plan",
+    "POST /api/ai/generate-focus-cards",
+    "POST /api/ai/generate-report",
+    "POST /generate-plan",
+    "POST /generate-focus-cards",
+    "POST /chat/ask",
+    "POST /generate-report",
+    "POST /generate-exercise",
+    "POST /exercise/{id}/submit",
+    "POST /search-resources"
+  ]
+}
